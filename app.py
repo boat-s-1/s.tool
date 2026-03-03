@@ -5,13 +5,14 @@ from PIL import Image, ImageDraw, ImageFont
 import io
 import datetime
 import plotly.express as px
-import streamlit.components.v1 as components  # 広告表示に必要
+import streamlit.components.v1 as components
 
 # ==========================================
 # 1. 基本設定
 # ==========================================
 st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
 
+# 会場別特性補正値
 PLACE_CORRECTIONS = {
     "桐生": {"展示": 0.2, "直線": 0.2, "回り足": 0.3, "一周": 0.3},
     "戸田": {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2},
@@ -22,6 +23,7 @@ PLACE_CORRECTIONS = {
     "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25}
 }
 
+# デザイン用ユーティリティ
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
 boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
@@ -50,7 +52,7 @@ def create_final_image(place, num, df_live):
     return img
 
 # ==========================================
-# 2. サイドバー
+# 2. サイドバー（広告込み）
 # ==========================================
 with st.sidebar:
     st.header("📋 レース情報")
@@ -59,7 +61,7 @@ with st.sidebar:
     st.divider()
     st.info(f"📍 選択中: {r_place} {r_num}R")
 
-    # --- 忍者AdMax広告コード（サイドバー最下部） ---
+    # --- 忍者AdMax広告 ---
     st.write("")
     st.caption("スポンサーリンク")
     ad_code = """
@@ -76,29 +78,28 @@ tab1, tab2, tab3 = st.tabs(["📝 簡易事前予想", "🔥 直前気配解析"
 
 with tab1:
     st.subheader("📊 事前スコアリング")
-    # スマホ向けに2列構成に変更（1→2、3→4、5→6と縦に並びやすく、順番が崩れにくい）
     with st.form("pre_form"):
         pre_raw = []
-        # 列数を 3 から 2 に変更してスマホでの視認性をアップ
-        cols = st.columns(2)
-        for i in range(1, 7):
-            # (i-1)%2 により、左列(1,3,5)、右列(2,4,6)に固定
-            with cols[(i-1)%2]:
-                st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:8px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:5px; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
-                m = st.select_slider(f"モーター", range(7), 0, get_symbol, key=f"pre_m_{i}")
-                t = st.select_slider(f"当地勝率", range(7), 0, get_symbol, key=f"pre_t_{i}")
-                w = st.select_slider(f"枠番勝率", range(7), 0, get_symbol, key=f"pre_w_{i}")
-                s = st.select_slider(f"枠番ST", range(7), 0, get_symbol, key=f"pre_s_{i}")
-                score = (m * 0.25 + t * 0.20 + w * 0.35 + s * 0.20)
-                pre_raw.append({"艇番": i, "score": score, "モーター": get_symbol(m), "当地": get_symbol(t), "枠番勝率": get_symbol(w), "枠番ST": get_symbol(s)})
-                st.markdown("---") # 艇ごとの区切り線
+        # 1-2, 3-4, 5-6 のペアで作成することで、スマホでの順序崩れを防止
+        for row_idx in range(3):
+            cols = st.columns(2)
+            for col_idx in range(2):
+                i = row_idx * 2 + col_idx + 1
+                with cols[col_idx]:
+                    st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:8px; border-radius:5px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
+                    m = st.select_slider(f"モーター", range(7), 0, get_symbol, key=f"pre_m_{i}")
+                    t = st.select_slider(f"当地勝率", range(7), 0, get_symbol, key=f"pre_t_{i}")
+                    w = st.select_slider(f"枠番勝率", range(7), 0, get_symbol, key=f"pre_w_{i}")
+                    s = st.select_slider(f"枠番ST", range(7), 0, get_symbol, key=f"pre_s_{i}")
+                    score = (m * 0.25 + t * 0.20 + w * 0.35 + s * 0.20)
+                    pre_raw.append({"艇番": i, "score": score, "モーター": get_symbol(m), "当地": get_symbol(t), "枠番勝率": get_symbol(w), "枠番ST": get_symbol(s)})
+            st.markdown("---")
         
         submitted_pre = st.form_submit_button("事前ランキングを確定", use_container_width=True, type="primary")
 
     if submitted_pre:
         df_pre = pd.DataFrame(pre_raw).sort_values("score", ascending=False)
         st.markdown("### 🏆 事前注目ランク")
-        # 結果表示もスマホで見やすく縦に並ぶように調整
         card_cols = st.columns(3)
         for idx, row in enumerate(df_pre.head(3).itertuples()):
             with card_cols[idx]:
@@ -109,21 +110,22 @@ with tab1:
         st.dataframe(df_pre[["艇番", "score", "モーター", "当地", "枠番勝率", "枠番ST"]], use_container_width=True, hide_index=True)
 
 with tab2:
-    st.subheader(f"🏟️ {r_place} 解析")
-    # スマホではグラフを下に回す
+    st.subheader(f"🏟️ {r_place} 直前気配解析")
     with st.form("live_form"):
         live_raw = []
-        l_cols = st.columns(2) # 直前解析も2列に
-        for i in range(1, 7):
-            with l_cols[(i-1)%2]:
-                st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:4px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
-                f1 = st.select_slider(f"展示", range(7), 0, get_symbol, key=f"live_f1_{i}")
-                f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
-                f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
-                f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
-                corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-                live_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
-                live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
+        for row_idx in range(3):
+            l_cols = st.columns(2)
+            for col_idx in range(2):
+                i = row_idx * 2 + col_idx + 1
+                with l_cols[col_idx]:
+                    st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:4px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
+                    f1 = st.select_slider(f"展示", range(7), 0, get_symbol, key=f"live_f1_{i}")
+                    f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
+                    f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
+                    f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
+                    corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
+                    live_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
+                    live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
         submitted_live = st.form_submit_button(f"{r_place}で解析実行", use_container_width=True, type="primary")
 
     if submitted_live:
@@ -135,9 +137,9 @@ with tab2:
         st.dataframe(df_live[["艇番", "期待値", "展示", "直線", "回り足", "一周"]], use_container_width=True, hide_index=True)
 
 with tab3:
-    st.subheader("📸 画像生成")
+    st.subheader("📸 SNS画像生成")
     if "final_res" in st.session_state:
-        if st.button("✨ 予想画像を生成", use_container_width=True, type="primary"):
+        if st.button("✨ 最終予想画像を生成", use_container_width=True, type="primary"):
             with st.spinner("デザイン構築中..."):
                 img = create_final_image(r_place, r_num, st.session_state["final_res"])
                 st.image(img, use_container_width=True)
