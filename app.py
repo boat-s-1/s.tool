@@ -48,7 +48,7 @@ def create_modern_sns_image(race_info, df_sorted):
     draw = ImageDraw.Draw(img)
     
     # フォント読み込み
-    font_path = "NotoSansJP-Regular.ttf" 
+    font_path = "NotoSansJP-VariableFont_wght.ttf" 
     try:
         f_title = ImageFont.truetype("NotoSansJP-Bold.ttf", 60) # タイトルは太字
         f_header = ImageFont.truetype(font_path, 36)
@@ -320,5 +320,6 @@ with tab_sns:
                 )
     else:
         st.info("「統計解析 & 当日予想」タブで予想を確定させてから、このタブを開いてください。")
+
 
 
