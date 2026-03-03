@@ -69,7 +69,7 @@ def create_modern_sns_image(race_info, df_sorted):
 boat_colors = {1: (230,126,34), 2: (52,152,219), 3: (231,76,60), 4: (241,196,15), 5: (46,204,113), 6: (149,165,166)}
 
 # ==========================================
-# 3. サイドバー
+# 3. サイドバー（複数シート対応）
 # ==========================================
 with st.sidebar:
     st.header("📋 データ設定")
@@ -78,15 +78,34 @@ with st.sidebar:
     r_num = st.number_input("レース番号", 1, 12, 12)
     race_type_val = st.radio("解析データ対象", ["混合", "女子"], horizontal=True)
     
-    if st.button("🔄 スプレッドシート読み込み", use_container_width=True, type="primary"):
-        with st.spinner("取得中..."):
+    # 🔗 スプレッドシートID設定
+    SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4" # 現在のID
+    SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII" # 2つ目のID
+    
+    if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
+        with st.spinner("2つのスプレッドシートを統合中..."):
             try:
-                sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
-                ws = sh.worksheet(f"{r_place}_{race_type_val}統計")
-                st.session_state["base_df"] = pd.DataFrame(ws.get_all_records())
-                st.success(f"✅ {r_place} 読込完了")
+                # 1枚目のシート読み込み
+                sh1 = gc.open_by_key(SS_ID_1)
+                ws1 = sh1.worksheet(f"{r_place}_{race_type_val}統計")
+                df1 = pd.DataFrame(ws1.get_all_records())
+                
+                # 2枚目のシート読み込み（エラー回避のためtry-except）
+                df_combined = df1
+                try:
+                    sh2 = gc.open_by_key(SS_ID_2)
+                    ws2 = sh2.worksheet(f"{r_place}_{race_type_val}統計")
+                    df2 = pd.DataFrame(ws2.get_all_records())
+                    # データを縦に連結
+                    df_combined = pd.concat([df1, df2], ignore_index=True)
+                    st.info(f"📁 ファイル2から {len(df2)} 件追加しました")
+                except Exception as e2:
+                    st.warning("ファイル2に該当シートがないため、ファイル1のみで解析します。")
+
+                st.session_state["base_df"] = df_combined
+                st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
             except Exception as e:
-                st.error(f"エラー: {e}")
+                st.error(f"ファイル1の読込失敗: {e}")}")
 
 # ==========================================
 # 4. メインエリア
@@ -170,3 +189,4 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 保存", buf.getvalue(), "yoso.png", "image/png")
+
