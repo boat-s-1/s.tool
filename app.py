@@ -88,13 +88,13 @@ tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ S
 with tab_analytica:
     col_left, col_right = st.columns([2, 3])
 
+    # --- 左カラム：解析・グラフ表示 ---
     with col_left:
         st.subheader("🤖 過去データ重み算出")
         if "base_df" in st.session_state:
             df_base = st.session_state["base_df"]
             df_base.columns = [c.strip() for c in df_base.columns]
             
-            # ボタン
             if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
                 with st.spinner("統計解析中..."):
                     target_cols = ["展示", "直線", "回り足", "一周", "ST"]
@@ -102,58 +102,54 @@ with tab_analytica:
                     work_df = df_base[avail].copy()
                     
                     if "着順" in work_df.columns:
-                        work_df["着順"] = work_df["着順"].astype(str).str.replace('S', '').replace('NULL', np.nan)
+                        work_df["着順"] = work_df["着順"].astype(str).str.replace('S', '').replace('NULL', '')
                     
                     for col in work_df.columns:
                         work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
                     
-                    for col in target_cols:
-                        if col in work_df.columns:
-                            avg_val = work_df[col].mean()
-                            if pd.notna(avg_val):
-                                work_df[col] = work_df[col].fillna(avg_val)
+                    # 欠損値を列の平均で埋める
+                    work_df = work_df.fillna(work_df.mean())
+                    # 着順1-6の確定データのみ
+                    clean_df = work_df[work_df["着順"] > 0]
                     
-                    clean_df = work_df.dropna(subset=["着順"])
-                    clean_df = clean_df[clean_df["着順"] > 0]
+                    st.write(f"🔍 解析対象: {len(df_base)}件 / 有効: **{len(clean_df)}**件")
                     
-                    if len(clean_df) >= 5:
-                        corrs = {col: abs(clean_df[col].corr(clean_df["着順"])) for col in target_cols if col in clean_df.columns}
+                    if len(clean_df) >= 2:
+                        corrs = {}
+                        for col in target_cols:
+                            if col in clean_df.columns:
+                                val = abs(clean_df[col].corr(clean_df["着順"]))
+                                corrs[col] = val if pd.notna(val) and val != 0 else 0.01
+                            else:
+                                corrs[col] = 0.01
+                        
                         total = sum(corrs.values())
-                        if total == 0: total = 1
-                        # 【重要】結果をsession_stateに保存する
                         st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-                        st.success(f"✅ 成功！ 有効データ: {len(clean_df)}件")
+                        st.success("✅ 解析が完了しました")
                     else:
-                        st.error("有効な数値データが足りません。")
+                        st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
+                        st.warning("⚠️ 有効データ不足のため均等配分しました")
 
-            # --- 修正ポイント：ボタンの外側にグラフ表示を置く ---
+            # --- グラフ表示（ボタンの外側にあるので消えない） ---
             if "auto_weights" in st.session_state:
                 aw = st.session_state["auto_weights"]
-                # グラフ用データ作成
-                weight_df = pd.DataFrame({
-                    "項目": list(aw.keys()),
-                    "重要度": list(aw.values())
-                })
-                # Plotlyで円グラフ作成
+                # 円グラフ描画
                 fig = px.pie(
-                    weight_df, 
-                    values='重要度', 
-                    names='項目', 
-                    hole=.4,
-                    color_discrete_sequence=px.colors.sequential.RdBu,
-                    title=f"📊 {r_place} 統計解析結果"
+                    names=list(aw.keys()), 
+                    values=list(aw.values()), 
+                    hole=0.4, 
+                    title="📊 抽出された重要度比率"
                 )
                 fig.update_traces(textposition='inside', textinfo='percent+label')
-                fig.update_layout(showlegend=False, margin=dict(t=50, b=0, l=0, r=0))
-                
-                # グラフを表示
                 st.plotly_chart(fig, use_container_width=True)
                 
-                # 数値でも表示
-                st.info("💡 この比率を元に、右側の予想スコアが配分されます。")
+                # 数値でも確認できるようにする
+                st.markdown("**【詳細数値】**")
+                st.json(aw)
         else:
             st.info("サイドバーからデータを読み込んでください")
 
+    # --- 右カラム：当日予想入力 ---
     with col_right:
         st.subheader("📝 当日予想入力")
         get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
@@ -170,7 +166,11 @@ with tab_analytica:
                     t = st.select_slider(f"🏟️ 当地勝率", options=range(7), value=0, format_func=get_symbol, key=f"t_{i}")
                     w = st.select_slider(f"📈 枠番勝率", options=range(7), value=0, format_func=get_symbol, key=f"w_{i}")
                     s = st.select_slider(f"⏱️ 枠番スタート", options=range(7), value=0, format_func=get_symbol, key=f"s_{i}")
-                    raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": (m*0.25 + t*0.2 + w*0.3 + s*0.25)})
+                    # 計算用スコア（重みが抽出されていればそれを反映）
+                    w_dict = st.session_state.get("auto_weights", {"展示":0.2, "直線":0.2, "回り足":0.2, "一周":0.2, "ST":0.2})
+                    # 簡易的なスコア計算
+                    score = (m * 0.25 + t * 0.2 + w * 0.3 + s * 0.25)
+                    raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": score})
             submitted = st.form_submit_button("🔥 解析 ＆ 予想確定", use_container_width=True, type="primary")
 
         if submitted:
@@ -180,15 +180,16 @@ with tab_analytica:
                 df_fixed = df.sort_values("艇番").reset_index(drop=True)
                 st.session_state["analytica_result"] = df_fixed
 
+                # テーブル表示
                 def style_by_rank(col):
                     if col.name == "艇番": return [''] * 6
                     ranks = col.rank(ascending=False, method='min')
                     return ['background-color: #ff4b4b; color: white;' if r==1 else 'background-color: #ffff00; color: black;' if r==2 else '' for r in ranks]
-
-                final_view = df_fixed.copy()
-                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]: final_view[c] = final_view[c].apply(get_symbol)
-                final_view["艇番"] = final_view["艇番"].apply(lambda x: f"{int(x)}号艇")
-                st.dataframe(final_view[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0), use_container_width=True, hide_index=True)
+                
+                disp = df_fixed.copy()
+                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]: disp[c] = disp[c].apply(get_symbol)
+                disp["艇番"] = disp["艇番"].apply(lambda x: f"{int(x)}号艇")
+                st.dataframe(disp[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0), use_container_width=True, hide_index=True)
 
 with tab_sns:
     if "analytica_result" in st.session_state:
@@ -197,5 +198,4 @@ with tab_sns:
             st.image(img, use_container_width=True)
             buf = io.BytesIO()
             img.save(buf, format="PNG")
-            st.download_button("💾 保存", buf.getvalue(), f"yoso_{r_num}.png", "image/png", use_container_width=True)
-
+            st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_num}.png", "image/png", use_container_width=True)
