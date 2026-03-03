@@ -79,30 +79,48 @@ with st.sidebar:
     SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
     SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII"
     
-    if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
+   if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
         with st.spinner("ファイルを読み込み中..."):
             try:
+                # プログラムが探している標準的な名前
                 target_name = f"{r_place}_{race_type_val}統計"
                 
-                # ファイル1
+                # --- ファイル1の処理 ---
                 sh1 = gc.open_by_key(SS_ID_1)
-                all_ws1 = {ws.title.strip(): ws for ws in sh1.worksheets()}
+                # 全タブのリストを取得
+                ws1_list = sh1.worksheets()
+                ws1_titles = [ws.title for ws in ws1_list]
                 
-                if target_name in all_ws1:
-                    df1 = pd.DataFrame(all_ws1[target_name].get_all_records())
+                # 柔軟にシートを探す (完全一致 or 前後空白無視 or 部分一致)
+                selected_ws1 = None
+                for ws in ws1_list:
+                    t = ws.title.strip().replace("＿", "_") # 全角アンダーバーも許容
+                    if t == target_name or target_name in t:
+                        selected_ws1 = ws
+                        break
+                
+                if selected_ws1:
+                    df1 = pd.DataFrame(selected_ws1.get_all_records())
+                    st.info(f"📍 ファイル1: 「{selected_ws1.title}」を読み込みました")
                 else:
+                    # 見つからない場合は存在するシート名をヒントとして出す
                     st.error(f"ファイル1に「{target_name}」が見つかりません。")
+                    st.write("📂 ファイル1にあるシート名一覧:")
+                    st.write(ws1_titles)
                     st.stop()
 
-                # ファイル2（連結処理）
+                # --- ファイル2の処理 ---
                 df_combined = df1
                 try:
                     sh2 = gc.open_by_key(SS_ID_2)
-                    all_ws2 = {ws.title.strip(): ws for ws in sh2.worksheets()}
-                    if target_name in all_ws2:
-                        df2 = pd.DataFrame(all_ws2[target_name].get_all_records())
-                        df_combined = pd.concat([df1, df2], ignore_index=True)
-                        st.info(f"📁 ファイル2から {len(df2)} 件追加しました")
+                    ws2_list = sh2.worksheets()
+                    for ws in ws2_list:
+                        t = ws.title.strip().replace("＿", "_")
+                        if t == target_name or target_name in t:
+                            df2 = pd.DataFrame(ws.get_all_records())
+                            df_combined = pd.concat([df1, df2], ignore_index=True)
+                            st.info(f"📁 ファイル2: 「{ws.title}」から {len(df2)} 件追加しました")
+                            break
                 except:
                     pass
 
@@ -198,6 +216,7 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
+
 
 
 
