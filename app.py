@@ -11,7 +11,7 @@ def get_label(val):
 # ==========================================
 # 2. UI関数エリア
 # ==========================================
-def render_7step_with_styled_table():
+def render_boat_fixed_ranking():
     st.header("🎯 ボートレース事前簡易予想ツール")
     
     # 指標の重み
@@ -27,10 +27,10 @@ def render_7step_with_styled_table():
                 i = row * 2 + col + 1
                 with cols[col]:
                     st.markdown(f"""<div style="background:#f1f3f5; border-left:5px solid #2d3436; padding:5px 10px; border-radius:4px; margin-bottom:5px;"><b>{i}号艇</b></div>""", unsafe_allow_html=True)
-                    m = st.select_slider(f"🚀 モーター", options=range(7), value=0, format_func=lambda x: {6:"◎",5:"○",4:"▲",3:"△",2:"×",1:"・",0:"無"}[x], key=f"v_m_{i}")
-                    t = st.select_slider(f"🏟️ 当地勝率", options=range(7), value=0, format_func=lambda x: {6:"◎",5:"○",4:"▲",3:"△",2:"×",1:"・",0:"無"}[x], key=f"v_t_{i}")
-                    w = st.select_slider(f"📈 枠番勝率", options=range(7), value=0, format_func=lambda x: {6:"◎",5:"○",4:"▲",3:"△",2:"×",1:"・",0:"無"}[x], key=f"v_w_{i}")
-                    s = st.select_slider(f"⏱️ 枠番ST", options=range(7), value=0, format_func=lambda x: {6:"◎",5:"○",4:"▲",3:"△",2:"×",1:"・",0:"無"}[x], key=f"v_s_{i}")
+                    m = st.select_slider(f"🚀 モーター", options=range(7), value=0, format_func=get_label, key=f"v_m_{i}")
+                    t = st.select_slider(f"🏟️ 当地勝率", options=range(7), value=0, format_func=get_label, key=f"v_t_{i}")
+                    w = st.select_slider(f"📈 枠番勝率", options=range(7), value=0, format_func=get_label, key=f"v_w_{i}")
+                    s = st.select_slider(f"⏱️ 枠番ST", options=range(7), value=0, format_func=get_label, key=f"v_s_{i}")
 
                     score = (m * WEIGHTS["モーター"] + t * WEIGHTS["当地勝率"] + w * WEIGHTS["枠番勝率"] + s * WEIGHTS["枠番スタート"])
                     raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "総合スコア": round(score, 3)})
@@ -43,32 +43,38 @@ def render_7step_with_styled_table():
             st.warning("⚠️ 評価を入力してください。")
             return
 
-        # --- 1. 項目別ランキング表の作成 ---
-        st.markdown("### 📋 項目別評価ランキング")
+        # --- 1. 艇番固定・項目別順位表の作成 ---
+        st.markdown("### 📋 艇番別・項目順位一覧")
+        
         items = [("🚀 モーター", "モーター"), ("🏟️ 当地勝率", "当地勝率"), ("📈 枠番勝率", "枠番勝率"), ("⏱️ 枠番スタート", "枠番スタート")]
         
-        # 各項目の1位〜6位を算出
-        rank_table = {}
+        # 順位データを格納する辞書
+        rank_data = {"艇番": [f"{i}号艇" for i in range(1, 7)]}
+        
         for display_name, col_name in items:
-            # 評価が高い順、同じなら艇番が若い順
-            sorted_df = df.sort_values(by=[col_name, "艇番"], ascending=[False, True]).reset_index()
-            rank_list = []
-            for r in range(6):
-                boat = sorted_df.loc[r, '艇番']
-                val_label = get_label(sorted_df.loc[r, col_name])
-                rank_list.append(f"{boat} ({val_label})")
-            rank_table[display_name] = rank_list
+            # 項目ごとにスコアで順位付け（同点時は艇番が若い順）
+            # rank(ascending=False) で大きい順に順位を振る
+            df[f'{col_name}_順位'] = df[col_name].rank(method='min', ascending=False)
+            
+            # 順位と評価記号を組み合わせた文字列を作成
+            item_ranks = []
+            for idx, row in df.iterrows():
+                r = int(row[f'{col_name}_順位'])
+                label = get_label(row[col_name])
+                item_ranks.append(f"{r}位 ({label})")
+            rank_data[display_name] = item_ranks
 
-        rank_df = pd.DataFrame(rank_table, index=[f"{i}位" for i in range(1, 7)])
+        rank_df = pd.DataFrame(rank_data).set_index("艇番")
 
-        # スタイル適用関数
-        def style_ranking(styler):
-            # 1位（0行目）を赤、2位（1行目）を黄色
-            styler.applymap(lambda x: 'background-color: #ffcccc; color: #cc0000; font-weight: bold;', subset=pd.IndexSlice['1位', :])
-            styler.applymap(lambda x: 'background-color: #ffffcc; color: #888800; font-weight: bold;', subset=pd.IndexSlice['2位', :])
-            return styler
+        # スタイル適用関数（1位を赤、2位を黄色）
+        def highlight_ranks(val):
+            if "1位" in val:
+                return 'background-color: #ffcccc; color: #cc0000; font-weight: bold;'
+            elif "2位" in val:
+                return 'background-color: #ffffcc; color: #888800; font-weight: bold;'
+            return ''
 
-        st.table(style_ranking(rank_df.style))
+        st.table(rank_df.style.applymap(highlight_ranks))
 
         # --- 2. 総合％予想の計算 ---
         total_sum = df["総合スコア"].sum()
@@ -99,5 +105,5 @@ def render_7step_with_styled_table():
 # 3. 実行エリア
 # ==========================================
 if __name__ == "__main__":
-    st.set_page_config(page_title="Boat Race Ranking Tool", layout="wide")
-    render_7step_with_styled_table()
+    st.set_page_config(page_title="Boat Race Analysis", layout="wide")
+    render_boat_fixed_ranking()
