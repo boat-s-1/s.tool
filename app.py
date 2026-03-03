@@ -22,12 +22,10 @@ except Exception as e:
     st.error(f"⚠️ Google Sheets接続エラー: {e}")
     st.stop()
 
-# 会場別特性補正値（例: 特徴に合わせて配分を自動調整）
+# 会場別特性補正値（直感解析タブ用）
 PLACE_CORRECTIONS = {
-    "江戸川": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2},  # 波乗り・旋回重視
-    "戸田":   {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2},  # 伸び・カド捲り重視
-    "桐生":   {"展示": 0.2, "直線": 0.2, "回り足": 0.3, "一周": 0.3},  # バランス
-    "住之江": {"展示": 0.3, "直線": 0.2, "回り足": 0.3, "一周": 0.2},  # イン重視・展示重要
+    "江戸川": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2},
+    "戸田":   {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2},
     "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25}
 }
 
@@ -37,6 +35,7 @@ PLACE_CORRECTIONS = {
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
 boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
+boat_colors_rgb = {1: (230,126,34), 2: (52,152,219), 3: (231,76,60), 4: (241,196,15), 5: (46,204,113), 6: (149,165,166)}
 
 def style_by_rank(col):
     if col.name == "艇番": return [''] * 6
@@ -62,14 +61,12 @@ def create_modern_sns_image(race_info, df_sorted):
         row = df_top3.iloc[i]; b_no = int(row['艇番']); curr_x = 60 + (410 * i)
         draw.rounded_rectangle([curr_x, 160, curr_x + 380, 640], radius=20, fill=(250, 250, 250), outline=(200,200,200), width=2)
         draw.text((curr_x + 20, 180), f"{i+1}番手", font=f_header, fill=(50, 50, 50))
-        draw.text((curr_x + 100, 260), f"{b_no}", font=f_boat, fill=boat_colors.get(b_no, (0,0,0)))
+        draw.text((curr_x + 100, 260), str(b_no), font=f_boat, fill=boat_colors_rgb.get(b_no, (0,0,0)))
         draw.text((curr_x + 110, 450), f"{row['予想％']:.1f}%", font=f_pct, fill=(211, 47, 47))
     return img
 
-boat_colors = {1: (230,126,34), 2: (52,152,219), 3: (231,76,60), 4: (241,196,15), 5: (46,204,113), 6: (149,165,166)}
-
 # ==========================================
-# 3. サイドバー（複数シート対応）
+# 3. サイドバー（複数スプレッドシート対応）
 # ==========================================
 with st.sidebar:
     st.header("📋 データ設定")
@@ -79,33 +76,34 @@ with st.sidebar:
     race_type_val = st.radio("解析データ対象", ["混合", "女子"], horizontal=True)
     
     # 🔗 スプレッドシートID設定
-    SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4" # 現在のID
-    SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII" # 2つ目のID
+    SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
+    SS_ID_2 = "ここに2つ目のスプレッドシートIDを入力"
     
     if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
-        with st.spinner("2つのスプレッドシートを統合中..."):
+        with st.spinner("2つのファイルを読み込み中..."):
             try:
-                # 1枚目のシート読み込み
+                sheet_name = f"{r_place}_{race_type_val}統計"
+                
+                # ファイル1
                 sh1 = gc.open_by_key(SS_ID_1)
-                ws1 = sh1.worksheet(f"{r_place}_{race_type_val}統計")
+                ws1 = sh1.worksheet(sheet_name)
                 df1 = pd.DataFrame(ws1.get_all_records())
                 
-                # 2枚目のシート読み込み（エラー回避のためtry-except）
+                # ファイル2
                 df_combined = df1
                 try:
                     sh2 = gc.open_by_key(SS_ID_2)
-                    ws2 = sh2.worksheet(f"{r_place}_{race_type_val}統計")
+                    ws2 = sh2.worksheet(sheet_name)
                     df2 = pd.DataFrame(ws2.get_all_records())
-                    # データを縦に連結
                     df_combined = pd.concat([df1, df2], ignore_index=True)
                     st.info(f"📁 ファイル2から {len(df2)} 件追加しました")
-                except Exception as e2:
+                except:
                     st.warning("ファイル2に該当シートがないため、ファイル1のみで解析します。")
 
                 st.session_state["base_df"] = df_combined
                 st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
             except Exception as e:
-                st.error(f"ファイル1の読込失敗: {e}")}")
+                st.error(f"ファイル1の読込失敗: {e}")
 
 # ==========================================
 # 4. メインエリア
@@ -123,15 +121,21 @@ with tab1:
                 df = st.session_state["base_df"].copy()
                 df.columns = [c.strip() for c in df.columns]
                 target = ["展示", "直線", "回り足", "一周", "ST"]
-                for c in target + ["着順"]: df[c] = pd.to_numeric(df[c].astype(str).str.replace('S','').replace('NULL',''), errors='coerce')
-                df = df.fillna(df.mean())
-                clean = df[df["着順"] > 0]
-                if len(clean) >= 2:
-                    corrs = {c: abs(clean[c].corr(clean["着順"])) or 0.01 for c in target}
-                    total = sum(corrs.values())
-                    st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                if all(c in df.columns for c in target + ["着順"]):
+                    for c in target + ["着順"]:
+                        df[c] = pd.to_numeric(df[c].astype(str).str.replace('S','').replace('NULL',''), errors='coerce')
+                    df = df.fillna(df.mean())
+                    clean = df[df["着順"] > 0]
+                    if len(clean) >= 2:
+                        corrs = {c: abs(clean[c].corr(clean["着順"])) or 0.01 for c in target}
+                        total = sum(corrs.values())
+                        st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                else:
+                    st.error("必要な列（展示、直線など）が見つかりません。")
+
             if "auto_weights" in st.session_state:
-                st.plotly_chart(px.pie(names=list(st.session_state["auto_weights"].keys()), values=list(st.session_state["auto_weights"].values()), hole=0.4), use_container_width=True)
+                aw = st.session_state["auto_weights"]
+                st.plotly_chart(px.pie(names=list(aw.keys()), values=list(aw.values()), hole=0.4, title="統計重要度"), use_container_width=True)
 
     with col_right:
         with st.form("form1"):
@@ -146,22 +150,21 @@ with tab1:
                     s = st.select_slider(f"枠番ST", range(7), 0, get_symbol, key=f"t1_s_{i}")
                     raw.append({"艇番": i, "score": (m*0.25+t*0.2+w*0.3+s*0.25), "モーター":m, "当地勝率":t, "枠番勝率":w, "枠番スタート":s})
             if st.form_submit_button("🔥 統計解析で確定"):
-                df = pd.DataFrame(raw)
-                df["予想％"] = (df["score"]/df["score"].sum()*100).round(1)
-                st.session_state["res"] = df; st.dataframe(df.style.apply(style_by_rank, axis=0))
+                df_res = pd.DataFrame(raw)
+                total_s = df_res["score"].sum()
+                if total_s > 0:
+                    df_res["予想％"] = (df_res["score"]/total_s*100).round(1)
+                    st.session_state["res"] = df_res; st.dataframe(df_res.style.apply(style_by_rank, axis=0))
 
-# --- タブ2: 直感気配解析（NEW） ---
+# --- タブ2: 直感気配解析 ---
 with tab2:
     col_l, col_r = st.columns([2, 3])
     with col_l:
         st.subheader(f"⚖️ {r_place} 特性補正")
         corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-        fig_corr = px.bar(x=list(corr.keys()), y=list(corr.values()), labels={'x':'項目', 'y':'重要度'}, title="会場別補正ウェイト")
-        st.plotly_chart(fig_corr, use_container_width=True)
-        st.info(f"💡 {r_place}は「{max(corr, key=corr.get)}」の影響が強い会場として補正されます。")
+        st.plotly_chart(px.bar(x=list(corr.keys()), y=list(corr.values()), title="会場別補正ウェイト"), use_container_width=True)
 
     with col_r:
-        st.subheader("👀 展示・気配の直感入力")
         with st.form("form2"):
             raw_feel = []
             c_f = st.columns(2)
@@ -172,14 +175,14 @@ with tab2:
                     f2 = st.select_slider(f"直線(伸び)", range(7), 0, get_symbol, key=f"f2_{i}")
                     f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"f3_{i}")
                     f4 = st.select_slider(f"一周タイム", range(7), 0, get_symbol, key=f"f4_{i}")
-                    # 会場補正を掛け合わせたスコア計算
                     f_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
                     raw_feel.append({"艇番": i, "score": f_score, "展示": f1, "直線": f2, "回り足": f3, "一周": f4})
             if st.form_submit_button("🚀 直感気配で確定"):
                 df_f = pd.DataFrame(raw_feel)
-                df_f["予想％"] = (df_f["score"]/df_f["score"].sum()*100).round(1)
-                st.session_state["res"] = df_f # 画像生成用に結果を保存
-                st.dataframe(df_f.sort_values("艇番").style.apply(style_by_rank, axis=0))
+                total_f = df_f["score"].sum()
+                if total_f > 0:
+                    df_f["予想％"] = (df_f["score"]/total_f*100).round(1)
+                    st.session_state["res"] = df_f; st.dataframe(df_f.sort_values("艇番").style.apply(style_by_rank, axis=0))
 
 # --- タブ3: SNS画像生成 ---
 with tab3:
@@ -188,5 +191,4 @@ with tab3:
             img = create_modern_sns_image({"place": r_place, "num": r_num}, st.session_state["res"])
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
-            st.download_button("💾 保存", buf.getvalue(), "yoso.png", "image/png")
-
+            st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
