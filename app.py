@@ -14,7 +14,7 @@ def create_sns_image(race_info, df_rank, df_sorted):
     draw = ImageDraw.Draw(img)
 
     # アップロードしたフォントファイルを指定
-    font_path = "NotoSansJP-Regular.ttf" 
+    font_path = "NotoSansJP-VariableFont_wght.ttf" 
     
     try:
         f_title = ImageFont.truetype(font_path, 45)
@@ -260,3 +260,4 @@ if submitted:
         st.image(img, use_container_width=True)
 
         # 保存（ダウンロード）ボタン
+
