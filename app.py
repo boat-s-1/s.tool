@@ -83,4 +83,20 @@ def render_7step_slider_tool():
 
             # デザイン設定
             colors = {1: ("#fff1c1", "#f39c12", "🥇"), 2: ("#f8f9fa", "#bdc3c7", "🥈"), 3: ("#ffede5", "#e67e22", "🥉")}
-            bg
+            bg, brd, icon = colors.get(rank, ("#ffffff", "#dfe6e9", f"{rank}位"))
+
+            with res_cols[i % 3]:
+                st.markdown(f"""
+                    <div style="background:{bg}; border:2px solid {brd}; border-radius:12px; padding:15px; text-align:center; box-shadow:0 2px 4px rgba(0,0,0,0.05); margin-bottom:10px;">
+                        <div style="font-size:12px; color:#636e72;">{icon}</div>
+                        <div style="font-size:26px; font-weight:bold; color:#2d3436;">{boat}<span style="font-size:14px;">号艇</span></div>
+                        <div style="font-size:20px; font-weight:bold; color:#e74c3c;">{pct:.1f}%</div>
+                    </div>
+                """, unsafe_allow_html=True)
+
+# ==========================================
+# 3. 実行エリア
+# ==========================================
+if __name__ == "__main__":
+    st.set_page_config(page_title="Boat 7-Step Slider", layout="wide")
+    render_7step_slider_tool()
