@@ -58,7 +58,7 @@ def create_modern_sns_image(race_info, df_sorted):
     return img
 
 # ==========================================
-# 3. サイドバー（データ読み込み）
+# 3. サイドバー
 # ==========================================
 with st.sidebar:
     st.header("📋 データ設定")
@@ -71,7 +71,6 @@ with st.sidebar:
     if st.button("🔄 スプレッドシート読み込み", use_container_width=True, type="primary"):
         with st.spinner("データ取得中..."):
             try:
-                # スプレッドシートIDを指定
                 sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
                 ws = sh.worksheet(target_sheet)
                 data = ws.get_all_records()
@@ -81,12 +80,11 @@ with st.sidebar:
                 st.error(f"読込失敗: {e}")
 
 # ==========================================
-# 4. メインエリア（タブ構成）
+# 4. メインエリア
 # ==========================================
 st.title(f"📊 {PLACE_NAME} Pro Analytica")
 tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ SNS画像生成"])
 
-# --- タブ1：統計解析 & 当日予想 ---
 with tab_analytica:
     col_left, col_right = st.columns([2, 3])
 
@@ -94,44 +92,56 @@ with tab_analytica:
         st.subheader("🤖 過去データ重み算出")
         if "base_df" in st.session_state:
             df_base = st.session_state["base_df"]
-            # 列名の空白削除（全角スペース対策）
             df_base.columns = [c.strip() for c in df_base.columns]
             
             if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
                 with st.spinner("統計解析中..."):
                     target_cols = ["展示", "直線", "回り足", "一周", "ST"]
-                    # 存在する列だけでコピー
                     avail = [c for c in target_cols + ["着順"] if c in df_base.columns]
                     work_df = df_base[avail].copy()
                     
-                    # 文字列(S0, NULL等)を数値に変換、失敗はNaNにする
+                    # --- 文字データを数値に変換する特殊処理 ---
+                    if "着順" in work_df.columns:
+                        # S0 -> 0, NULL -> 空白へ置換
+                        work_df["着順"] = work_df["着順"].astype(str).str.replace('S', '').replace('NULL', np.nan)
+                    
                     for col in work_df.columns:
                         work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
                     
-                    # 数値が揃っている行だけ抽出
-                    clean_df = work_df.dropna()
+                    # タイムのNULLを平均値で補完（1行も無駄にしない）
+                    for col in target_cols:
+                        if col in work_df.columns:
+                            avg_val = work_df[col].mean()
+                            if pd.notna(avg_val):
+                                work_df[col] = work_df[col].fillna(avg_val)
                     
-                    st.write(f"🔍 全 {len(df_base)} 行中、有効な数値データ: **{len(clean_df)}** 件")
+                    # 着順が確定している行を抽出
+                    clean_df = work_df.dropna(subset=["着順"])
+                    # 着順0（S0など）を一旦除外して統計精度を上げる
+                    clean_df = clean_df[clean_df["着順"] > 0]
+                    
+                    st.write(f"🔍 解析対象: {len(df_base)}件 / 有効データ: **{len(clean_df)}**件")
 
                     if len(clean_df) < 5:
-                        st.error("⚠️ 数値データが不足しています。着順が1〜6の行を増やしてください。")
+                        st.warning("⚠️ 数値データが極端に不足しています。全項目0.2で仮設定します。")
                         st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
                     else:
-                        # 相関係数(絶対値)で重み付け
+                        # 相関計算
                         corrs = {col: abs(clean_df[col].corr(clean_df["着順"])) for col in target_cols if col in clean_df.columns}
                         total = sum(corrs.values())
+                        if total == 0: total = 1
                         st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-                        st.success("✅ 最適重みを算出しました")
+                        st.success("✅ 重みの抽出に成功しました！")
 
             if "auto_weights" in st.session_state:
                 aw = st.session_state["auto_weights"]
-                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=.4, title="項目別重要度比率")
+                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=.4, title="統計から導いた重要項目")
                 st.plotly_chart(fig, use_container_width=True)
         else:
-            st.info("サイドバーの「スプレッドシート読み込み」を押してください")
+            st.info("サイドバーからデータを読み込んでください")
 
     with col_right:
-        st.subheader("📝 当日予想入力フォーム")
+        st.subheader("📝 当日予想入力")
         get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
         boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
         boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
@@ -142,50 +152,35 @@ with tab_analytica:
             for i in range(1, 7):
                 with cols_i[(i-1)%2]:
                     st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:2px 10px; border-radius:4px; font-weight:bold; border:1px solid #ddd; margin-bottom:5px;">{i}号艇</div>', unsafe_allow_html=True)
-                    m = st.select_slider(f"🚀 モーター評価", options=range(7), value=0, format_func=get_symbol, key=f"m_{i}")
+                    m = st.select_slider(f"🚀 モーター", options=range(7), value=0, format_func=get_symbol, key=f"m_{i}")
                     t = st.select_slider(f"🏟️ 当地勝率", options=range(7), value=0, format_func=get_symbol, key=f"t_{i}")
                     w = st.select_slider(f"📈 枠番勝率", options=range(7), value=0, format_func=get_symbol, key=f"w_{i}")
                     s = st.select_slider(f"⏱️ 枠番スタート", options=range(7), value=0, format_func=get_symbol, key=f"s_{i}")
-                    score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
-                    raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": score})
+                    raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": (m*0.25 + t*0.2 + w*0.3 + s*0.25)})
             submitted = st.form_submit_button("🔥 解析 ＆ 予想確定", use_container_width=True, type="primary")
 
         if submitted:
             df = pd.DataFrame(raw_data)
-            total_score = df["score"].sum()
-            if total_score > 0:
-                df["予想％"] = (df["score"] / total_score * 100).round(1)
+            if df["score"].sum() > 0:
+                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
                 df_fixed = df.sort_values("艇番").reset_index(drop=True)
                 st.session_state["analytica_result"] = df_fixed
 
-                st.markdown("### 📋 項目別比較表 (1-6号艇固定)")
-                
-                # 順位色付け関数
                 def style_by_rank(col):
                     if col.name == "艇番": return [''] * 6
                     ranks = col.rank(ascending=False, method='min')
-                    return ['background-color: #ff4b4b; color: white; font-weight: bold;' if r==1 else 
-                            'background-color: #ffff00; color: black; font-weight: bold;' if r==2 else '' for r in ranks]
+                    return ['background-color: #ff4b4b; color: white;' if r==1 else 'background-color: #ffff00; color: black;' if r==2 else '' for r in ranks]
 
-                disp_df = df_fixed.copy()
-                disp_df["艇番"] = disp_df["艇番"].apply(lambda x: f"{int(x)}号艇")
-                
-                # スタイル適用後の表示用記号置換
-                final_view = disp_df.copy()
-                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
-                    final_view[c] = final_view[c].apply(get_symbol)
-
+                final_view = df_fixed.copy()
+                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]: final_view[c] = final_view[c].apply(get_symbol)
+                final_view["艇番"] = final_view["艇番"].apply(lambda x: f"{int(x)}号艇")
                 st.dataframe(final_view[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0), use_container_width=True, hide_index=True)
 
-# --- タブ2：SNS画像生成 ---
 with tab_sns:
     if "analytica_result" in st.session_state:
-        st.subheader("🖼️ SNS投稿用画像の生成")
         if st.button("✨ モダンデザイン画像を生成", use_container_width=True):
             img = create_modern_sns_image({"place": r_place, "num": r_num, "date": str(r_date)}, st.session_state["analytica_result"])
             st.image(img, use_container_width=True)
             buf = io.BytesIO()
             img.save(buf, format="PNG")
-            st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png", use_container_width=True)
-    else:
-        st.info("「統計解析 & 当日予想」タブで予想を確定させてから開いてください。")
+            st.download_button("💾 保存", buf.getvalue(), f"yoso_{r_num}.png", "image/png", use_container_width=True)
