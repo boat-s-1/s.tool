@@ -131,24 +131,33 @@ with st.sidebar:
     race_type_val = st.radio("解析データ対象", ["混合", "女子"], horizontal=True)
     target_sheet = f"{r_place}_{race_type_val}統計"
     
-    if st.button(f"🔄 {target_sheet} データを読み込む", use_container_width=True, type="primary"):
-        with st.spinner("スプレッドシートからデータ取得中..."):
-            try:
-                # 実際のシートIDに書き換えてください
-                sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
-                ws = sh.worksheet(target_sheet)
-                data = ws.get_all_records()
-                if data:
-                    df = pd.DataFrame(data)
-                    # 数値型への変換
-                    num_cols = ["展示", "直線", "一周", "回り足", "艇番", "ST", "着順"]
-                    for c in num_cols:
-                        if c in df.columns: df[c] = pd.to_numeric(df[c], errors="coerce")
-                    st.session_state["base_df"] = df
-                    st.toast(f"✅ {len(df)}件のデータを読み込みました")
-                else: st.error("シートにデータがありません")
-            except Exception as e: st.error(f"読込失敗。シート名を確認してください: {e}")
+   if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
+                with st.spinner("統計解析中..."):
+                    # 1. 必要な列だけを抽出
+                    target_cols = ["展示", "直線", "回り足", "一周", "ST"]
+                    # コピーを作成して、元のデータを壊さないようにする
+                    work_df = df_base[target_cols + ["着順"]].copy()
+                    
+                    # 2. 強制的に数値に変換（文字や空欄は NaN になる）
+                    for col in work_df.columns:
+                        work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
+                    
+                    # 3. NaN（数値でない行）をすべて削除
+                    clean_df = work_df.dropna()
+                    
+                    # デバッグ用：有効なデータ数を表示（これで原因がわかります）
+                    st.write(f"🔍 全 {len(df_base)} 行中、有効な数値データは {len(clean_df)} 行です")
 
+                    if len(clean_df) < 10:
+                        st.warning("⚠️ 数値として読み込めるデータが不足しています。シートの「着順」や各タイムが全角になっていないか、文字が入っていないか確認してください。")
+                        st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
+                    else:
+                        # 4. 相関係数の計算
+                        # 着順(1-6)とタイムは「正の相関」があるはず（タイムが遅い[大]ほど着順も悪い[大]）
+                        corrs = {col: max(0.01, clean_df[col].corr(clean_df["着順"])) for col in target_cols}
+                        total = sum(corrs.values())
+                        st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                        st.toast("統計重みの算出が完了しました！")
     if "base_df" in st.session_state:
         st.success(f"適用中: {target_sheet} ({len(st.session_state['base_df'])}件)")
 
@@ -320,6 +329,7 @@ with tab_sns:
                 )
     else:
         st.info("「統計解析 & 当日予想」タブで予想を確定させてから、このタブを開いてください。")
+
 
 
 
