@@ -79,31 +79,44 @@ with st.sidebar:
     SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
     SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII"
     
-    if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
-        with st.spinner("2つのファイルを読み込み中..."):
+   if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
+        with st.spinner("ファイルを読み込み中..."):
             try:
-                sheet_name = f"{r_place}_{race_type_val}統計"
+                # ユーザーが選択した「会場_種別統計」という名前
+                target_name = f"{r_place}_{race_type_val}統計"
                 
-                # ファイル1
+                # --- ファイル1の処理 ---
                 sh1 = gc.open_by_key(SS_ID_1)
-                ws1 = sh1.worksheet(sheet_name)
-                df1 = pd.DataFrame(ws1.get_all_records())
+                # 全タブ名を取得して、空白を除去して比較する
+                all_ws1 = {ws.title.strip(): ws for ws in sh1.worksheets()}
                 
-                # ファイル2
+                if target_name in all_ws1:
+                    df1 = pd.DataFrame(all_ws1[target_name].get_all_records())
+                else:
+                    # 部分一致でも探してみる
+                    matched = [t for t in all_ws1.keys() if target_name in t]
+                    if matched:
+                        df1 = pd.DataFrame(all_ws1[matched[0]].get_all_records())
+                    else:
+                        st.error(f"ファイル1に「{target_name}」が見つかりません。")
+                        st.stop()
+
+                # --- ファイル2の処理 ---
                 df_combined = df1
                 try:
                     sh2 = gc.open_by_key(SS_ID_2)
-                    ws2 = sh2.worksheet(sheet_name)
-                    df2 = pd.DataFrame(ws2.get_all_records())
-                    df_combined = pd.concat([df1, df2], ignore_index=True)
-                    st.info(f"📁 ファイル2から {len(df2)} 件追加しました")
+                    all_ws2 = {ws.title.strip(): ws for ws in sh2.worksheets()}
+                    if target_name in all_ws2:
+                        df2 = pd.DataFrame(all_ws2[target_name].get_all_records())
+                        df_combined = pd.concat([df1, df2], ignore_index=True)
+                        st.info(f"📁 ファイル2から {len(df2)} 件追加しました")
                 except:
-                    st.warning("ファイル2に該当シートがないため、ファイル1のみで解析します。")
+                    pass # ファイル2にない場合は無視
 
                 st.session_state["base_df"] = df_combined
                 st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
             except Exception as e:
-                st.error(f"ファイル1の読込失敗: {e}")
+                st.error(f"読み込み失敗: {e}")
 
 # ==========================================
 # 4. メインエリア
@@ -192,4 +205,5 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
+
 
