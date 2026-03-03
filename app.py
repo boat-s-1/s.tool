@@ -224,23 +224,26 @@ with tab_analytica:
                     
             submitted = st.form_submit_button("🔥 解析 ＆ 予想確定", use_container_width=True, type="primary")
 
-        # --- 結果表示エリア ---
+       # --- 結果表示エリア ---
         if submitted:
             df = pd.DataFrame(raw_data)
             total_s = df["score"].sum()
             if total_s == 0:
                 st.warning("評価を入力してください")
             else:
+                # 予想％の計算
                 df["予想％"] = (df["score"] / total_s * 100).round(1)
-                df_sorted = df.sort_values("予想％", ascending=False).reset_index(drop=True)
-                st.session_state["analytica_result"] = df_sorted
+                # 1号艇から6号艇の順に並び替え（固定）
+                df_fixed = df.sort_values("艇番").reset_index(drop=True)
+                st.session_state["analytica_result"] = df_fixed
 
-                # 🥇 TOP3 クイック表示
+                # 🥇 TOP3 クイック表示（ここは強い順に表示）
                 st.markdown("### 🥇 総合評価TOP3")
+                df_top3 = df_fixed.sort_values("予想％", ascending=False).head(3)
                 c1, c2, c3 = st.columns(3)
                 medals = {0: "🥇", 1: "🥈", 2: "🥉"}
                 for i in range(3):
-                    row = df_sorted.iloc[i]
+                    row = df_top3.iloc[i]
                     b_no = int(row["艇番"])
                     with [c1, c2, c3][i]:
                         st.markdown(f"""
@@ -251,26 +254,43 @@ with tab_analytica:
                             </div>
                         """, unsafe_allow_html=True)
 
-                # 📋 ランキング詳細表（公式色分け）
-                st.markdown("### 📋 全艇解析ランキング")
+                # 📋 全艇解析ランキング（1-6号艇固定・項目別色付け）
+                st.markdown("### 📋 項目別比較表 (1-6号艇)")
                 
-                # 表示用変換
-                display_df = df_sorted.copy()
+                # 1. 各項目の順位を計算（数値が大きいほど良いので昇順=False）
+                # タイムなどの生データではなく入力スコア(0-6)に基づいています
+                rank_df = df_fixed.rank(ascending=False, method='min')
+
+                # 2. スタイル定義関数
+                def highlight_ranks(val_series):
+                    # 項目ごとの順位を取得
+                    col_name = val_series.name
+                    ranks = df_fixed[col_name].rank(ascending=False, method='min')
+                    
+                    styles = []
+                    for r in ranks:
+                        if r == 1:
+                            styles.append('background-color: #ff4b4b; color: white; font-weight: bold;') # 1位：赤
+                        elif r == 2:
+                            styles.append('background-color: #ffff00; color: black; font-weight: bold;') # 2位：黄
+                        else:
+                            styles.append('')
+                    return styles
+
+                # 3. 表示用データ成形（記号に変換）
+                display_df = df_fixed.copy()
+                display_df["艇番"] = display_df["艇番"].apply(lambda x: f"{int(x)}号艇")
+                
+                # 記号に変換する前に数値を保持してスタイルを適用
+                styled_table = display_df[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(highlight_ranks, subset=["予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"])
+                
+                # 最後に記号へ置換（表示上のみ）
+                # ※styleを適用した後はデータ変換が難しいため、表示順序を工夫します
                 for col in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
                     display_df[col] = display_df[col].apply(get_symbol)
-                
-                # 行ごとの色付けスタイル関数
-                def style_rows(row):
-                    b_idx = int(row["艇番"])
-                    bg = boat_bg_colors.get(b_idx, "#fff")
-                    text = boat_text_colors.get(b_idx, "#000")
-                    # 1号艇（白）の場合は枠線が見えるように少しグレーを混ぜるか境界線を意識
-                    border = "1px solid #eee" if b_idx == 1 else "none"
-                    return [f'background-color: {bg}; color: {text}; font-weight: bold; border: {border}'] * len(row)
 
-                # テーブル表示
                 st.dataframe(
-                    display_df[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_rows, axis=1),
+                    display_df[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(highlight_ranks, subset=["予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]),
                     use_container_width=True,
                     hide_index=True
                 )
@@ -300,4 +320,5 @@ with tab_sns:
                 )
     else:
         st.info("「統計解析 & 当日予想」タブで予想を確定させてから、このタブを開いてください。")
+
 
