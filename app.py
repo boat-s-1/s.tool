@@ -13,7 +13,7 @@ def create_sns_image(race_info, df_rank, df_sorted):
     img = Image.new('RGB', (width, height), color=(255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    font_path = "NotoSansJP-Regular.ttf" 
+    font_path = "NotoSansJP-VariableFont_wght.ttf" 
     try:
         f_title = ImageFont.truetype(font_path, 45)
         f_header = ImageFont.truetype(font_path, 28)
@@ -131,3 +131,4 @@ if submitted:
             mime="image/png",
             use_container_width=True
         )
+
