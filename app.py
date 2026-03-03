@@ -168,11 +168,107 @@ st.divider()
 # ==========================================
 tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ SNS画像生成"])
 
-Script execution error
-File "/mount/src/s.tool/app.py", line 134
-     if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
-                                                                ^
-IndentationError: unindent does not match any outer indentation level
+# --- タブ1：統計解析 & 当日予想 ---
+with tab_analytica:
+    col_left, col_right = st.columns([2, 3])
+
+    # --- 左カラム：統計重み算出 ---
+    with col_left:
+        st.subheader("🤖 過去データ重み算出")
+        
+        if "base_df" in st.session_state:
+            df_base = st.session_state["base_df"]
+            
+            # 統計抽出ボタン
+            if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
+                with st.spinner("統計解析中..."):
+                    # 1. 必要な列の抽出
+                    target_cols = ["展示", "直線", "回り足", "一周", "ST"]
+                    if all(c in df_base.columns for c in target_cols + ["着順"]):
+                        work_df = df_base[target_cols + ["着順"]].copy()
+                        # 2. 数値変換
+                        for col in work_df.columns:
+                            work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
+                        # 3. 有効データ特定
+                        clean_df = work_df.dropna()
+                        
+                        st.write(f"🔍 解析対象: {len(df_base)}件")
+                        st.write(f"✅ 数値として有効なデータ: **{len(clean_df)}**件")
+
+                        if len(clean_df) < 10:
+                            st.warning("⚠️ 数値データが足りません。列名や中身を確認してください。")
+                            st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
+                        else:
+                            # 4. 相関による重み計算
+                            corrs = {col: max(0.01, clean_df[col].corr(clean_df["着順"])) for col in target_cols}
+                            total = sum(corrs.values())
+                            st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                            st.success("✅ 重みの算出に成功しました！")
+                    else:
+                        st.error("⚠️ スプレッドシートの列名（展示、着順など）が正しくありません。")
+
+            # グラフ表示
+            if "auto_weights" in st.session_state:
+                aw = st.session_state["auto_weights"]
+                weight_df = pd.DataFrame({"項目": aw.keys(), "重要度": aw.values()})
+                fig = px.pie(weight_df, values='重要度', names='項目', hole=.4, title="重要度比率")
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("サイドバーからデータを読み込んでください")
+
+    # --- 右カラム：当日予想入力 & 結果表示 ---
+    with col_right:
+        st.subheader("📝 当日予想入力フォーム")
+        get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
+        boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
+        boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
+
+        with st.form("input_form"):
+            raw_data = []
+            cols_input = st.columns(2)
+            for i in range(1, 7):
+                with cols_input[(i-1)%2]:
+                    st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:2px 10px; border-radius:4px; font-weight:bold; border:1px solid #ddd; margin-bottom:5px;">{i}号艇</div>', unsafe_allow_html=True)
+                    m = st.select_slider(f"🚀 モーター", options=range(7), value=0, format_func=get_symbol, key=f"m_{i}")
+                    t = st.select_slider(f"🏟️ 当地勝率", options=range(7), value=0, format_func=get_symbol, key=f"t_{i}")
+                    w = st.select_slider(f"📈 枠番勝率", options=range(7), value=0, format_func=get_symbol, key=f"w_{i}")
+                    s = st.select_slider(f"⏱️ 枠番スタート", options=range(7), value=0, format_func=get_symbol, key=f"s_{i}")
+                    score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
+                    raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": score})
+            submitted = st.form_submit_button("🔥 解析 ＆ 予想確定", use_container_width=True, type="primary")
+
+        if submitted:
+            df = pd.DataFrame(raw_data)
+            if df["score"].sum() > 0:
+                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
+                df_fixed = df.sort_values("艇番").reset_index(drop=True)
+                st.session_state["analytica_result"] = df_fixed
+
+                st.markdown("### 🥇 総合評価TOP3")
+                df_top3 = df_fixed.sort_values("予想％", ascending=False).head(3)
+                c_top = st.columns(3)
+                for i, (_, row) in enumerate(df_top3.iterrows()):
+                    b_no = int(row["艇番"])
+                    c_top[i].markdown(f'<div style="background:{boat_bg[b_no]}; color:{boat_tx[b_no]}; padding:10px; border-radius:8px; text-align:center; border:1px solid #ddd;"><b>{b_no}号艇</b><br><span style="font-size:1.5em;">{row["予想％"]}%</span></div>', unsafe_allow_html=True)
+
+                st.markdown("### 📋 項目別比較表 (1-6号艇固定)")
+                
+                # 色付け関数
+                def style_by_rank(col):
+                    if col.name == "艇番": return [''] * 6
+                    ranks = col.rank(ascending=False, method='min')
+                    return ['background-color: #ff4b4b; color: white;' if r==1 else 'background-color: #ffff00; color: black;' if r==2 else '' for r in ranks]
+
+                # 表示用変換
+                final_df = df_fixed.copy()
+                final_df["艇番"] = final_df["艇番"].apply(lambda x: f"{int(x)}号艇")
+                # スタイル適用（数値で判定）
+                styled = final_df[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0)
+                # 記号化して表示
+                for col in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
+                    final_df[col] = final_df[col].apply(get_symbol)
+
+                st.dataframe(final_df[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0), use_container_width=True, hide_index=True)
 # --- タブ2：SNS画像生成 ---
 with tab_sns:
     st.subheader("🖼️ SNS投稿用画像の生成・ダウンロード")
@@ -198,6 +294,7 @@ with tab_sns:
                 )
     else:
         st.info("「統計解析 & 当日予想」タブで予想を確定させてから、このタブを開いてください。")
+
 
 
 
