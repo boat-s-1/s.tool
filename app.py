@@ -10,32 +10,22 @@ import datetime
 def create_sns_image(race_info, df_rank, df_sorted):
     # 画像サイズ (1200x675: Twitter/X推奨比率)
     width, height = 1200, 675
-    img = Image.new('RGB', (width, height), color=(255, 255, 255))
+    img = Image.new('RGB', (255, 255, 255))
     draw = ImageDraw.Draw(img)
 
-    # --- フォント設定 (環境に合わせてパスを変更してください) ---
-    # Streamlit Cloud (Linux) の一般的な日本語フォントパス
-    font_paths = [
-        "/usr/share/fonts/truetype/fonts-japanese-gothic.ttf",
-        "C:\\Windows\\Fonts\\msmincho.ttc",  # Windows
-        "/System/Library/Fonts/jp/Hiragino Mincho ProN.ttc" # Mac
-    ]
-    font_path = font_paths[0]
-    for p in font_paths:
-        try:
-            test_font = ImageFont.truetype(p, 10)
-            font_path = p
-            break
-        except:
-            continue
-
+    # --- フォント設定 ---
+    # アップロードしたフォントファイル名を指定
+    font_path = "NotoSansJP-Regular.ttf" 
+    
     try:
         f_title = ImageFont.truetype(font_path, 45)
         f_header = ImageFont.truetype(font_path, 28)
-        f_body = ImageFont.truetype(font_path, 24)
-        f_rank1 = ImageFont.truetype(font_path, 28) # 1位用強調
+        f_body = ImageFont.truetype(font_path, 22)
+        f_rank_big = ImageFont.truetype(font_path, 32)
     except:
-        f_title = f_header = f_body = f_rank1 = ImageFont.load_default()
+        # 万が一読み込めなかった場合のバックアップ
+        st.error(f"フォントファイル '{font_path}' が見つかりません。")
+        f_title = f_header = f_body = f_rank_big = ImageFont.load_default()
 
     # --- デザイン描画 ---
     # ヘッダー帯 (濃紺)
@@ -44,115 +34,84 @@ def create_sns_image(race_info, df_rank, df_sorted):
     draw.text((40, 25), title_text, font=f_title, fill=(255, 255, 255))
     draw.text((width - 300, 35), race_info['date'], font=f_header, fill=(255, 255, 255))
 
-    # --- 項目別ランキング表の描画 ---
-    y_start = 150
+    # --- 艇番固定ランキング表の描画 ---
+    y_start = 140
     x_start = 50
-    col_width = 250
-    row_height = 60
+    col_w = 220 # 列幅
+    row_h = 55  # 行高
 
+    # 表のヘッダーラベル
     headers = ["艇番", "モーター", "当地勝率", "枠番勝率", "枠番ST"]
     for i, h in enumerate(headers):
-        draw.rectangle([x_start + i*col_width, y_start, x_start + (i+1)*col_width, y_start + row_height], outline=(0,0,0), width=2)
-        draw.text((x_start + i*col_width + 10, y_start + 15), h, font=f_header, fill=(0, 0, 0))
+        draw.rectangle([x_start + i*col_w, y_start, x_start + (i+1)*col_w, y_start + row_h], outline=(0,0,0), width=2)
+        draw.text((x_start + i*col_w + 15, y_start + 12), h, font=f_header, fill=(0, 0, 0))
 
+    # 各艇のデータ行
+    items = ["🚀 モーター", "🏟️ 当地勝率", "📈 枠番勝率", "⏱️ 枠番スタート"]
     for i in range(6):
         boat_label = f"{i+1}号艇"
-        curr_y = y_start + (i+1)*row_height
-        # 1列目 (艇番)
-        draw.rectangle([x_start, curr_y, x_start + col_width, curr_y + row_height], outline=(0,0,0))
-        draw.text((x_start + 10, curr_y + 15), boat_label, font=f_body, fill=(0,0,0))
+        curr_y = y_start + (i+1)*row_h
         
-        # 2列目以降 (順位)
-        for j, col_name in enumerate(["🚀 モーター", "🏟️ 当地勝率", "📈 枠番勝率", "⏱️ 枠番スタート"]):
-            val = df_rank.loc[boat_label, col_name]
-            cell_x = x_start + (j+1)*col_width
+        # 1列目 (艇番固定)
+        draw.rectangle([x_start, curr_y, x_start + col_w, curr_y + row_h], outline=(0,0,0))
+        draw.text((x_start + 15, curr_y + 12), boat_label, font=f_body, fill=(0,0,0))
+        
+        # 2列目以降 (順位と評価)
+        for j, col_name in enumerate(items):
+            val_text = df_rank.loc[boat_label, col_name]
+            cell_x = x_start + (j+1)*col_w
             
-            # 1位と2位に色をつける
-            bg_color = None
-            if "1位" in val: bg_color = (255, 204, 204) # 赤
-            elif "2位" in val: bg_color = (255, 255, 204) # 黄
+            # 1位を赤、2位を黄色でハイライト
+            bg = None
+            if "1位" in val_text: bg = (255, 204, 204)
+            elif "2位" in val_text: bg = (255, 255, 204)
             
-            if bg_color:
-                draw.rectangle([cell_x + 2, curr_y + 2, cell_x + col_width - 2, curr_y + row_height - 2], fill=bg_color)
+            if bg:
+                draw.rectangle([cell_x + 2, curr_y + 2, cell_x + col_w - 2, curr_y + row_h - 2], fill=bg)
             
-            draw.rectangle([cell_x, curr_y, cell_x + col_width, curr_y + row_height], outline=(0,0,0))
-            draw.text((cell_x + 10, curr_y + 15), val, font=f_body, fill=(0,0,0))
+            draw.rectangle([cell_x, curr_y, cell_x + col_w, curr_y + row_h], outline=(0,0,0))
+            draw.text((cell_x + 15, curr_y + 12), val_text, font=f_body, fill=(0,0,0))
 
-    # --- 総合予想 ％ カード風描画 ---
-    top3_y = 580
+    # --- 総合予想 ％ の表示 (下部) ---
+    st_y = 560
+    draw.text((x_start, st_y), "【総合評価ランキング】", font=f_header, fill=(20, 40, 80))
+    
     for i in range(3):
         row = df_sorted.iloc[i]
-        text = f"{i+1}位: {int(row['艇番'])}号艇 ({row['予想％']}%)"
-        draw.text((x_start + i*380, top3_y), text, font=f_rank1, fill=(211, 47, 47) if i==0 else (0,0,0))
+        medal = ["🥇", "🥈", "🥉"][i]
+        result_text = f"{medal} {int(row['艇番'])}号艇 ({row['予想％']}%)"
+        draw.text((x_start + i*380, st_y + 50), result_text, font=f_rank_big, fill=(211, 47, 47) if i==0 else (0,0,0))
 
-    # メモ欄
-    draw.text((width - 400, height - 40), "Generated by Boat-AI Analysis Tool", font=ImageFont.load_default(), fill=(150,150,150))
+    # フッター
+    draw.text((width - 400, height - 35), "Generated by Boat-AI Prediction Tool", font=f_body, fill=(180,180,180))
 
     return img
 
 # ==========================================
 # 2. メインUIエリア
 # ==========================================
-st.set_page_config(layout="wide")
-st.title("🎯 事前予想・専門誌風画像生成ツール")
+st.set_page_config(page_title="Boat Race SNS Generator", layout="wide")
 
-# --- A. レース基本情報入力 ---
+# サイドバー：レース情報入力
 with st.sidebar:
-    st.header("📋 レース情報入力")
+    st.header("📋 レース情報設定")
     r_date = st.date_input("レース日", datetime.date.today())
     r_place = st.selectbox("開催地", ["平和島", "江戸川", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "唐津", "大村"])
     r_num = st.number_input("レース番号", 1, 12, 12)
     race_info = {"date": str(r_date), "place": r_place, "num": r_num}
 
-# --- B. 評価入力フォーム ---
-# (前回の 7段階スライダーを流用)
-def get_label(val):
-    labels = {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}
-    return labels.get(val, "無")
+st.title("🎯 ボートレース事前予想 ＆ SNS画像生成")
 
-with st.form("main_form"):
+def get_symbol(val):
+    return {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}[val]
+
+# 入力フォーム
+with st.form("input_form"):
+    st.markdown("##### 🚤 各艇の評価をスライダーで入力")
     WEIGHTS = {"モーター": 0.25, "当地勝率": 0.2, "枠番勝率": 0.3, "枠番スタート": 0.25}
     raw_data = []
-    st.markdown("##### 🚤 艇ごとの評価入力")
-    c_list = st.columns(2)
-    for i in range(1, 7):
-        with c_list[(i-1)%2]:
-            st.write(f"**{i}号艇**")
-            m = st.select_slider("🚀 モーター", options=range(7), value=0, format_func=get_label, key=f"m{i}")
-            t = st.select_slider("🏟️ 当地勝率", options=range(7), value=0, format_func=get_label, key=f"t{i}")
-            w = st.select_slider("📈 枠番勝率", options=range(7), value=0, format_func=get_label, key=f"w{i}")
-            s = st.select_slider("⏱️ 枠番ST", options=range(7), value=0, format_func=get_label, key=f"s{i}")
-            score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
-            raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "総合スコア": score})
-    submitted = st.form_submit_button("📊 解析 ＆ 画像準備", use_container_width=True, type="primary")
-
-if submitted:
-    df = pd.DataFrame(raw_data)
-    # 順位計算
-    rank_data = {"艇番": [f"{i}号艇" for i in range(1, 7)]}
-    for label, col in [("🚀 モーター", "モーター"), ("🏟️ 当地勝率", "当地勝率"), ("📈 枠番勝率", "枠番勝率"), ("⏱️ 枠番スタート", "枠番スタート")]:
-        df[f'{col}_順位'] = df[col].rank(method='min', ascending=False)
-        rank_data[label] = [f"{int(r)}位({get_label(v)})" for r, v in zip(df[f'{col}_順位'], df[col])]
-    df_rank = pd.DataFrame(rank_data).set_index("艇番")
-
-    # 総合％
-    total = df["総合スコア"].sum()
-    df["予想％"] = (df["総合スコア"] / total * 100).round(1) if total > 0 else 0
-    df_sorted = df.sort_values("予想％", ascending=False).reset_index(drop=True)
-
-    # --- 画像生成実行 ---
-    img = create_sns_image(race_info, df_rank, df_sorted)
     
-    # プレビュー
-    st.image(img, caption="SNS投稿用プレビュー", use_container_width=True)
-
-    # ダウンロードボタン
-    buf = io.BytesIO()
-    img.save(buf, format="PNG")
-    st.download_button(
-        label="💾 画像をダウンロード",
-        data=buf.getvalue(),
-        file_name=f"yoso_{r_place}_{r_num}R.png",
-        mime="image/png",
-        use_container_width=True
-    )
+    cols_input = st.columns(2)
+    for i in range(1, 7):
+        with cols_input[(i-1)%2]:
+            st.markdown(f"""
