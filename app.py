@@ -58,7 +58,19 @@ with st.sidebar:
     r_num = st.number_input("レース番号", 1, 12, 1)
     st.divider()
     st.info(f"📍 選択中: {r_place} {r_num}R")
-
+　　# --- サイドバーの最後に追加 ---
+    st.write("")  # スペース空け
+    st.caption("スポンサーリンク")
+    
+    # 広告コードを Python の文字列として定義します
+    ad_html = """
+    <div style="display:flex; justify-content:center;">
+        <script src="https://adm.shinobi.jp/s/7376cf1f6fa98b33f8f15e0342936071"></script>
+    </div>
+    """
+    
+    # components を使って画面に出力します
+    components.html(ad_html, height=260)
     # --- ここから忍者AdMax広告コード ---
  <!-- admax -->
 <script src="https://adm.shinobi.jp/s/00848ad75df65c15ca7f98de1efcf942"></script>
@@ -147,3 +159,4 @@ with tab3:
                 st.download_button(label="💾 画像を保存する", data=buf.getvalue(), file_name=f"yoso_{r_place}_{r_num}R.png", mime="image/png", use_container_width=True)
     else:
         st.warning("⚠️ タブ2で「最終解析」を実行すると、ここに画像生成メニューが表示されます。")
+
