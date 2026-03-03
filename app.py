@@ -178,34 +178,34 @@ with tab_analytica:
         if "base_df" in st.session_state:
             df_base = st.session_state["base_df"]
             
-            # ボタンの階層を正しく配置
+            # 【重要】ここからボタンの処理。インデント（字下げ）を正確に配置
             if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
                 with st.spinner("統計解析中..."):
-                    # 1. 必要な列の抽出とコピー
+                    # 1. 必要な列の抽出
                     target_cols = ["展示", "直線", "回り足", "一周", "ST"]
                     work_df = df_base[target_cols + ["着順"]].copy()
                     
-                    # 2. 数値変換（文字などはNaNになる）
+                    # 2. 数値変換
                     for col in work_df.columns:
                         work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
                     
-                    # 3. 有効データ（行）のみ残す
+                    # 3. NaNを除去して有効データを特定
                     clean_df = work_df.dropna()
                     
-                    # 有効件数の表示
-                    st.write(f"🔍 全 {len(df_base)} 行中、有効な数値データは {len(clean_df)} 行です")
+                    # 有効件数のデバッグ表示
+                    st.write(f"🔍 全 {len(df_base)} 行中、解析可能な数値データは **{len(clean_df)}** 行です")
 
                     if len(clean_df) < 10:
-                        st.warning("⚠️ 数値データが不足しています。")
+                        st.warning("⚠️ 解析可能なデータが不足しています。列名や数値（全角/半角）を確認してください。")
                         st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
                     else:
                         # 4. 相関係数による重み算出
                         corrs = {col: max(0.01, clean_df[col].corr(clean_df["着順"])) for col in target_cols}
                         total = sum(corrs.values())
                         st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-                        st.toast("統計重みの算出が完了しました！")
+                        st.toast("✅ 統計重みの算出が完了しました！")
 
-            # 重みグラフの表示
+            # 算出された重みの可視化
             if "auto_weights" in st.session_state:
                 aw = st.session_state["auto_weights"]
                 weight_df = pd.DataFrame({"項目": aw.keys(), "重要度": aw.values()})
@@ -221,7 +221,6 @@ with tab_analytica:
         st.subheader("📝 当日予想入力フォーム")
         get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
         
-        # 艇番ごとの公式色定義
         boat_bg_colors = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
         boat_text_colors = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
 
@@ -230,21 +229,15 @@ with tab_analytica:
             cols_input = st.columns(2)
             for i in range(1, 7):
                 with cols_input[(i-1)%2]:
-                    # 艇番ラベル
                     st.markdown(f"""<div style="background:{boat_bg_colors[i]}; color:{boat_text_colors[i]}; padding:2px 10px; border-radius:4px; font-weight:bold; border:1px solid #ddd; margin-bottom:5px;">{i}号艇</div>""", unsafe_allow_html=True)
-                    
                     m = st.select_slider(f"🚀 モーター", options=range(7), value=0, format_func=get_symbol, key=f"m_{i}")
                     t = st.select_slider(f"🏟️ 当地勝率", options=range(7), value=0, format_func=get_symbol, key=f"t_{i}")
                     w = st.select_slider(f"📈 枠番勝率", options=range(7), value=0, format_func=get_symbol, key=f"w_{i}")
                     s = st.select_slider(f"⏱️ 枠番スタート", options=range(7), value=0, format_func=get_symbol, key=f"s_{i}")
-                    
-                    # スコア計算
                     score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
                     raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": score})
-            
             submitted = st.form_submit_button("🔥 解析 ＆ 予想確定", use_container_width=True, type="primary")
 
-        # --- 結果表示（ここが1-6号艇固定＆色分け） ---
         if submitted:
             df = pd.DataFrame(raw_data)
             total_s = df["score"].sum()
@@ -252,7 +245,7 @@ with tab_analytica:
                 st.warning("評価を入力してください")
             else:
                 df["予想％"] = (df["score"] / total_s * 100).round(1)
-                # 1号艇から6号艇に固定
+                # 1号艇〜6号艇で固定表示
                 df_fixed = df.sort_values("艇番").reset_index(drop=True)
                 st.session_state["analytica_result"] = df_fixed
 
@@ -268,34 +261,31 @@ with tab_analytica:
 
                 st.markdown("### 📋 項目別比較表 (1-6号艇固定)")
                 
-                # 順位に応じたスタイル関数
-                def style_by_rank(col_data):
+                # 順位による色付け関数
+                def style_by_rank_fixed(col_data):
                     if col_data.name == "艇番": return [''] * len(col_data)
-                    # 数値としての順位を計算
+                    # 数値としての順位計算（高いほど1位）
                     ranks = col_data.rank(ascending=False, method='min')
-                    styles = []
-                    for r in ranks:
-                        if r == 1: styles.append('background-color: #ff4b4b; color: white; font-weight: bold;') # 1位：赤
-                        elif r == 2: styles.append('background-color: #ffff00; color: black; font-weight: bold;') # 2位：黄
-                        else: styles.append('')
-                    return styles
+                    return [
+                        'background-color: #ff4b4b; color: white; font-weight: bold;' if r == 1 else 
+                        'background-color: #ffff00; color: black; font-weight: bold;' if r == 2 else '' 
+                        for r in ranks
+                    ]
 
-                # 表示用データの作成
-                display_df = df_fixed.copy()
-                # 艇番表示の装飾
-                display_df["艇番"] = display_df["艇番"].apply(lambda x: f"{int(x)}号艇")
+                # 表示用変換
+                final_display = df_fixed.copy()
+                # 艇番の文字列化
+                final_display["艇番"] = final_display["艇番"].apply(lambda x: f"{int(x)}号艇")
                 
-                # スタイル適用（数値データに基づいて色付け）
-                styled_df = display_df[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0)
+                # スタイル適用（数値ベースで色を判定）
+                styled_df = final_display[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank_fixed, axis=0)
                 
-                # スタイル適用後に記号に変換して表示するのは難しいため、
-                # 表示の直前に get_symbol を適用した新しい DataFrame を作る
-                final_display = display_df.copy()
+                # 表示用に記号化
                 for col in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
                     final_display[col] = final_display[col].apply(get_symbol)
 
                 st.dataframe(
-                    final_display[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank, axis=0),
+                    final_display[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]].style.apply(style_by_rank_fixed, axis=0),
                     use_container_width=True,
                     hide_index=True
                 )
@@ -324,6 +314,7 @@ with tab_sns:
                 )
     else:
         st.info("「統計解析 & 当日予想」タブで予想を確定させてから、このタブを開いてください。")
+
 
 
 
