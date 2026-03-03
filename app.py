@@ -150,4 +150,133 @@ with st.sidebar:
             except Exception as e: st.error(f"読込失敗。シート名を確認してください: {e}")
 
     if "base_df" in st.session_state:
-        st.success(f"適用中: {target_sheet} ({len(st.
+        st.success(f"適用中: {target_sheet} ({len(st.session_state['base_df'])}件)")
+
+st.divider()
+
+# ==========================================
+# 4. タブエリア（統合・刷新）
+# ==========================================
+tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ SNS画像生成"])
+
+# --- タブ1：統計解析 & 当日予想 ---
+with tab_analytica:
+    col_left, col_right = st.columns([2, 3])
+    
+    with col_left:
+        st.subheader("🤖 過去データ重み算出")
+        if "base_df" in st.session_state:
+            df_base = st.session_state["base_df"]
+            
+            if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
+                with st.spinner("統計解析中..."):
+                    target_cols = ["展示", "直線", "回り足", "一周", "ST"]
+                    # 欠損値を除外
+                    work_df = df_base[target_cols + ["着順"]].apply(pd.to_numeric, errors='coerce').dropna()
+                    
+                    if len(work_df) < 20:
+                        st.warning("データ数が少なすぎます（最低20レース必要）。デフォルト値を使用します。")
+                        st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
+                    else:
+                        # 着順との相関係数を計算（タイムが速いほど着順が良い＝正の相関）
+                        corrs = {col: max(0.01, work_df[col].corr(work_df["着順"])) for col in target_cols}
+                        total = sum(corrs.values())
+                        # 重みの正規化
+                        st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                        st.toast("統計重みの算出が完了しました！")
+
+            if "auto_weights" in st.session_state:
+                aw = st.session_state["auto_weights"]
+                # ドーナツチャートで視覚化
+                weight_df = pd.DataFrame({"項目": aw.keys(), "重要度": aw.values()})
+                fig = px.pie(weight_df, values='重要度', names='項目', hole=.4, title=f"{r_place}の重要項目比率")
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig.update_layout(margin=dict(t=30, b=0, l=0, r=0))
+                st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("サイドバーからデータを読み込んでください")
+
+    with col_right:
+        st.subheader("📝 当日予想入力フォーム")
+        # 評価記号の定義
+        get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
+        
+        with st.form("input_form"):
+            st.markdown("##### 各艇の機力評価をスライダーで入力")
+            WEIGHTS = {"モーター": 0.25, "当地勝率": 0.2, "枠番勝率": 0.3, "枠番スタート": 0.25}
+            raw_data = []
+            
+            cols_input = st.columns(2)
+            for i in range(1, 7):
+                with cols_input[(i-1)%2]:
+                    # 艇番ラベル（公式色）
+                    bg_col = {1:"#ff6b6b", 2:"#4dabf7", 3:"#fa5252", 4:"#fcc419", 5:"#51cf66", 6:"#adb5bd"}.get(i)
+                    st.markdown(f'<div style="background:{bg_col}; color:white; padding:5px 10px; border-radius:4px; font-weight:bold; margin-bottom:5px;">{i}号艇</div>', unsafe_allow_html=True)
+                    m = st.select_slider("🚀 モーター", options=range(7), value=0, format_func=get_symbol, key=f"m_{i}")
+                    t = st.select_slider("🏟️ 当地勝率", options=range(7), value=0, format_func=get_symbol, key=f"t_{i}")
+                    w = st.select_slider("📈 枠番勝率", options=range(7), value=0, format_func=get_symbol, key=f"w_{i}")
+                    s = st.select_slider("⏱️ 枠番スタート", options=range(7), value=0, format_func=get_symbol, key=f"s_{i}")
+                    
+                    # 簡易スコア（後で％にする）
+                    score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
+                    raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "score": score})
+                    
+            submitted = st.form_submit_button("📊 解析 ＆ 予想確定", use_container_width=True, type="primary")
+
+        if submitted:
+            df = pd.DataFrame(raw_data)
+            if df["score"].sum() == 0:
+                st.warning("⚠️ 評価を入力してください。")
+            else:
+                # ％正規化と誤差補正
+                total_s = df["score"].sum()
+                df["予想％"] = (df["score"] / total_s * 100).round(1)
+                df_sorted = df.sort_values("予想％", ascending=False).reset_index(drop=True)
+                # 100%補正
+                diff = 100.0 - df_sorted["予想％"].sum()
+                df_sorted.loc[0, "予想％"] = round(df_sorted.loc[0, "予想％"] + diff, 1)
+                st.session_state["analytica_result"] = df_sorted
+                
+                # --- 結果表示（Pro版デザイン） ---
+                st.markdown("### 🥇 総合評価ランキング")
+                c1, c2, c3 = st.columns(3)
+                
+                # 上位3艇をカード表示
+                medals = {0: "🥇", 1: "🥈", 2: "🥉"}
+                cols = [c1, c2, c3]
+                
+                for i in range(3):
+                    row = df_sorted.iloc[i]
+                    boat = int(row["艇番"])
+                    pct = float(row["予想％"])
+                    
+                    with cols[i]:
+                        st.metric(label=f"{medals[i]} {boat}号艇", value=f"{pct:.1f}%")
+                        # 評価の内訳を表示（記号）
+                        st.caption(f"🚀{get_symbol(row['モーター'])} 🏟️{get_symbol(row['当地勝率'])} 📈{get_symbol(row['枠番勝率'])} ⏱️{get_symbol(row['枠番スタート'])}")
+
+# --- タブ2：SNS画像生成 ---
+with tab_sns:
+    st.subheader("🖼️ SNS投稿用画像の生成・ダウンロード")
+    
+    if "analytica_result" in st.session_state:
+        df_sorted = st.session_state["analytica_result"]
+        race_info = {"place": r_place, "num": r_num, "date": str(r_date)}
+        
+        if st.button("✨ モダンデザイン画像を生成", use_container_width=True):
+            with st.spinner("画像生成中..."):
+                img = create_modern_sns_image(race_info, df_sorted)
+                st.image(img, use_container_width=True, caption="生成された画像のプレビュー")
+                
+                # ダウンロードボタン
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                st.download_button(
+                    label="💾 この画像を保存する (PNG)",
+                    data=buf.getvalue(),
+                    file_name=f"yoso_{r_place}_{r_num}R.png",
+                    mime="image/png",
+                    use_container_width=True
+                )
+    else:
+        st.info("「統計解析 & 当日予想」タブで予想を確定させてから、このタブを開いてください。")
