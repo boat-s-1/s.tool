@@ -79,50 +79,53 @@ with st.sidebar:
     SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
     SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII"
     
-    if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
+   if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
         with st.spinner("ファイルを検索・読み込み中..."):
             try:
-                # 検索する標準名
                 target_name = f"{r_place}_{race_type_val}統計"
+                df_list = []  # 読み込んだデータを貯めるリスト
                 
-                # --- ファイル1の処理 ---
-                sh1 = gc.open_by_key(SS_ID_1)
-                ws1_list = sh1.worksheets()
-                selected_ws1 = None
-                
-                # 柔軟な検索（空白除去、全角アンダーバー対応、部分一致）
-                for ws in ws1_list:
-                    clean_title = ws.title.strip().replace("＿", "_")
-                    if clean_title == target_name or target_name in clean_title:
-                        selected_ws1 = ws
-                        break
-                
-                if selected_ws1:
-                    df1 = pd.DataFrame(selected_ws1.get_all_records())
-                    st.info(f"📍 ファイル1: 「{selected_ws1.title}」を読込")
-                else:
-                    st.error(f"ファイル1に「{target_name}」が見つかりません。")
-                    st.write("📂 ファイル1にあるシート名一覧:")
-                    st.write([ws.title for ws in ws1_list])
-                    st.stop()
+                # --- ファイル1の探索 ---
+                try:
+                    sh1 = gc.open_by_key(SS_ID_1)
+                    ws1_list = sh1.worksheets()
+                    for ws in ws1_list:
+                        clean_t = ws.title.strip().replace("＿", "_")
+                        if clean_t == target_name or target_name in clean_t:
+                            df1 = pd.DataFrame(ws.get_all_records())
+                            if not df1.empty:
+                                df_list.append(df1)
+                                st.info(f"📍 ファイル1: 「{ws.title}」を読込")
+                            break
+                except Exception as e1:
+                    st.warning(f"ファイル1のアクセス中にエラー: {e1}")
 
-                # --- ファイル2の処理 ---
-                df_combined = df1
+                # --- ファイル2の探索 ---
                 try:
                     sh2 = gc.open_by_key(SS_ID_2)
                     ws2_list = sh2.worksheets()
                     for ws in ws2_list:
-                        clean_title2 = ws.title.strip().replace("＿", "_")
-                        if clean_title2 == target_name or target_name in clean_title2:
+                        clean_t = ws.title.strip().replace("＿", "_")
+                        if clean_t == target_name or target_name in clean_t:
                             df2 = pd.DataFrame(ws.get_all_records())
-                            df_combined = pd.concat([df1, df2], ignore_index=True)
-                            st.info(f"📁 ファイル2: 「{ws.title}」を統合")
+                            if not df2.empty:
+                                df_list.append(df2)
+                                st.info(f"📁 ファイル2: 「{ws.title}」を読込")
                             break
-                except:
-                    pass
+                except Exception as e2:
+                    st.warning(f"ファイル2のアクセス中にエラー: {e2}")
 
-                st.session_state["base_df"] = df_combined
-                st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
+                # --- データの統合 ---
+                if df_list:
+                    df_combined = pd.concat(df_list, ignore_index=True)
+                    st.session_state["base_df"] = df_combined
+                    st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
+                else:
+                    st.error(f"❌ 「{target_name}」は、ファイル1・2のどちらにも見つかりませんでした。")
+                    # ヒントとしてファイル1のシート名だけ出しておく
+                    with st.expander("ファイル1のシート一覧を確認"):
+                        st.write([ws.title for ws in ws1_list])
+
             except Exception as e:
                 st.error(f"読み込み失敗: {e}")
 
@@ -233,6 +236,7 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
+
 
 
 
