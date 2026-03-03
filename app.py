@@ -66,7 +66,7 @@ def create_modern_sns_image(race_info, df_sorted):
     return img
 
 # ==========================================
-# 3. サイドバー（インデント修正版）
+# 3. サイドバー（インデント・柔軟検索対応版）
 # ==========================================
 with st.sidebar:
     st.header("📋 データ設定")
@@ -77,37 +77,54 @@ with st.sidebar:
     
     # 🔗 スプレッドシートID設定
     SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
-    SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII"
+    SS_ID_2 = "ここに2つ目のスプレッドシートIDを入力"
     
-   if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
-        with st.spinner("ファイルを読み込み中..."):
+    if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
+        with st.spinner("ファイルを検索・読み込み中..."):
             try:
-                # プログラムが探している標準的な名前
+                # 検索する標準名
                 target_name = f"{r_place}_{race_type_val}統計"
                 
                 # --- ファイル1の処理 ---
                 sh1 = gc.open_by_key(SS_ID_1)
-                # 全タブのリストを取得
                 ws1_list = sh1.worksheets()
-                ws1_titles = [ws.title for ws in ws1_list]
-                
-                # 柔軟にシートを探す (完全一致 or 前後空白無視 or 部分一致)
                 selected_ws1 = None
+                
+                # 柔軟な検索（空白除去、全角アンダーバー対応、部分一致）
                 for ws in ws1_list:
-                    t = ws.title.strip().replace("＿", "_") # 全角アンダーバーも許容
-                    if t == target_name or target_name in t:
+                    clean_title = ws.title.strip().replace("＿", "_")
+                    if clean_title == target_name or target_name in clean_title:
                         selected_ws1 = ws
                         break
                 
                 if selected_ws1:
                     df1 = pd.DataFrame(selected_ws1.get_all_records())
-                    st.info(f"📍 ファイル1: 「{selected_ws1.title}」を読み込みました")
+                    st.info(f"📍 ファイル1: 「{selected_ws1.title}」を読込")
                 else:
-                    # 見つからない場合は存在するシート名をヒントとして出す
                     st.error(f"ファイル1に「{target_name}」が見つかりません。")
                     st.write("📂 ファイル1にあるシート名一覧:")
-                    st.write(ws1_titles)
+                    st.write([ws.title for ws in ws1_list])
                     st.stop()
+
+                # --- ファイル2の処理 ---
+                df_combined = df1
+                try:
+                    sh2 = gc.open_by_key(SS_ID_2)
+                    ws2_list = sh2.worksheets()
+                    for ws in ws2_list:
+                        clean_title2 = ws.title.strip().replace("＿", "_")
+                        if clean_title2 == target_name or target_name in clean_title2:
+                            df2 = pd.DataFrame(ws.get_all_records())
+                            df_combined = pd.concat([df1, df2], ignore_index=True)
+                            st.info(f"📁 ファイル2: 「{ws.title}」を統合")
+                            break
+                except:
+                    pass
+
+                st.session_state["base_df"] = df_combined
+                st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
+            except Exception as e:
+                st.error(f"読み込み失敗: {e}")
 
                 # --- ファイル2の処理 ---
                 df_combined = df1
@@ -216,6 +233,7 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
+
 
 
 
