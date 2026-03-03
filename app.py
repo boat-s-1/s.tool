@@ -66,7 +66,7 @@ def create_modern_sns_image(race_info, df_sorted):
     return img
 
 # ==========================================
-# 3. サイドバー（インデント・柔軟検索対応版）
+# 3. サイドバー（インデント・ロジック完全修正版）
 # ==========================================
 with st.sidebar:
     st.header("📋 データ設定")
@@ -79,73 +79,57 @@ with st.sidebar:
     SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
     SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII"
     
-   if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
+    # この下の if の位置が SS_ID_2 とピッタリ揃っている必要があります
+    if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
         with st.spinner("ファイルを検索・読み込み中..."):
             try:
                 target_name = f"{r_place}_{race_type_val}統計"
-                df_list = []  # 読み込んだデータを貯めるリスト
+                df_list = []
                 
                 # --- ファイル1の探索 ---
                 try:
                     sh1 = gc.open_by_key(SS_ID_1)
                     ws1_list = sh1.worksheets()
                     for ws in ws1_list:
-                        clean_t = ws.title.strip().replace("＿", "_")
-                        if clean_t == target_name or target_name in clean_t:
+                        clean_t1 = ws.title.strip().replace("＿", "_")
+                        if clean_t1 == target_name or target_name in clean_t1:
                             df1 = pd.DataFrame(ws.get_all_records())
                             if not df1.empty:
                                 df_list.append(df1)
                                 st.info(f"📍 ファイル1: 「{ws.title}」を読込")
                             break
                 except Exception as e1:
-                    st.warning(f"ファイル1のアクセス中にエラー: {e1}")
+                    st.warning(f"ファイル1の確認中にエラーが発生しました（無視して続行します）")
 
                 # --- ファイル2の探索 ---
                 try:
                     sh2 = gc.open_by_key(SS_ID_2)
                     ws2_list = sh2.worksheets()
                     for ws in ws2_list:
-                        clean_t = ws.title.strip().replace("＿", "_")
-                        if clean_t == target_name or target_name in clean_t:
+                        clean_t2 = ws.title.strip().replace("＿", "_")
+                        if clean_t2 == target_name or target_name in clean_t2:
                             df2 = pd.DataFrame(ws.get_all_records())
                             if not df2.empty:
                                 df_list.append(df2)
                                 st.info(f"📁 ファイル2: 「{ws.title}」を読込")
                             break
                 except Exception as e2:
-                    st.warning(f"ファイル2のアクセス中にエラー: {e2}")
+                    st.warning(f"ファイル2の確認中にエラーが発生しました")
 
-                # --- データの統合 ---
+                # --- 統合と保存 ---
                 if df_list:
                     df_combined = pd.concat(df_list, ignore_index=True)
                     st.session_state["base_df"] = df_combined
-                    st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
+                    st.success(f"✅ 合計 {len(df_combined)} 件のデータを統合しました")
                 else:
-                    st.error(f"❌ 「{target_name}」は、ファイル1・2のどちらにも見つかりませんでした。")
-                    # ヒントとしてファイル1のシート名だけ出しておく
-                    with st.expander("ファイル1のシート一覧を確認"):
-                        st.write([ws.title for ws in ws1_list])
+                    st.error(f"❌ 「{target_name}」がどちらのファイルにも見つかりません。")
+                    # ヒントを表示
+                    with st.expander("ファイル1のシート名一覧を確認"):
+                        try:
+                            st.write([ws.title for ws in sh1.worksheets()])
+                        except:
+                            st.write("ファイル1にアクセスできませんでした。")
 
-            except Exception as e:
-                st.error(f"読み込み失敗: {e}")
-
-                # --- ファイル2の処理 ---
-                df_combined = df1
-                try:
-                    sh2 = gc.open_by_key(SS_ID_2)
-                    ws2_list = sh2.worksheets()
-                    for ws in ws2_list:
-                        t = ws.title.strip().replace("＿", "_")
-                        if t == target_name or target_name in t:
-                            df2 = pd.DataFrame(ws.get_all_records())
-                            df_combined = pd.concat([df1, df2], ignore_index=True)
-                            st.info(f"📁 ファイル2: 「{ws.title}」から {len(df2)} 件追加しました")
-                            break
-                except:
-                    pass
-
-                st.session_state["base_df"] = df_combined
-                st.success(f"✅ 合計 {len(df_combined)} 件 読込完了")
             except Exception as e:
                 st.error(f"読み込み失敗: {e}")
 
@@ -236,6 +220,7 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
+
 
 
 
