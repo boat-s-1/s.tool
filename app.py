@@ -120,38 +120,47 @@ tab1, tab2, tab3 = st.tabs(["🔍 統計解析予想", "🎯 直感気配解析"
 with tab1:
     col_left, col_right = st.columns([2, 3])
     with col_left:
-        st.subheader("🤖 過去データ解析")
+        st.subheader("🤖 統計データ重み算出")
         if "base_df" in st.session_state:
-            if st.button("📈 重みを抽出", use_container_width=True):
-                df = st.session_state["base_df"].copy()
-                target = ["展示", "直線", "回り足", "一周", "ST"]
-                for c in target + ["着順"]: df[c] = pd.to_numeric(df[c].astype(str).str.replace('S','').replace('NULL',''), errors='coerce')
-                df = df.fillna(df.mean()).dropna(subset=["着順"])
-                clean = df[df["着順"] > 0]
-                if len(clean) >= 2:
-                    corrs = {c: abs(clean[c].corr(clean["着順"])) or 0.01 for c in target}
-                    total = sum(corrs.values())
-                    st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-            
-            if "auto_weights" in st.session_state:
-                st.plotly_chart(px.pie(names=list(st.session_state["auto_weights"].keys()), values=list(st.session_state["auto_weights"].values()), hole=0.4, title=f"{r_place} 統計重要度"), use_container_width=True)
+            # 解析実行ボタン
+            if st.button("📈 過去データから重みを抽出", use_container_width=True, type="primary"):
+                with st.spinner("膨大なデータを解析中..."):
+                    df = st.session_state["base_df"].copy()
+                    target = ["展示", "直線", "回り足", "一周", "ST"]
+                    # 数値変換とクリーニング
+                    for c in target + ["着順"]: 
+                        df[c] = pd.to_numeric(df[c].astype(str).str.replace('S','').replace('NULL',''), errors='coerce')
+                    df = df.dropna(subset=["着順"])
+                    clean = df[df["着順"] > 0]
+                    
+                    if len(clean) >= 10: # ある程度のデータ数がある場合のみ解析
+                        corrs = {c: abs(clean[c].corr(clean["着順"])) or 0.01 for c in target}
+                        total = sum(corrs.values())
+                        st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                        st.success(f"✅ {len(clean)}件のデータから解析完了！")
+                    else:
+                        st.warning("⚠️ 有効な確定データが不足しています（10件以上必要）")
 
-    with col_right:
-        with st.form("form1"):
-            raw = []
-            c_i = st.columns(2)
-            for i in range(1, 7):
-                with c_i[(i-1)%2]:
-                    st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:2px; border-radius:4px; text-align:center;">{i}号艇</div>', unsafe_allow_html=True)
-                    m = st.select_slider(f"モーター", range(7), 0, get_symbol, key=f"t1_m_{i}")
-                    t = st.select_slider(f"当地勝率", range(7), 0, get_symbol, key=f"t1_t_{i}")
-                    w = st.select_slider(f"枠番勝率", range(7), 0, get_symbol, key=f"t1_w_{i}")
-                    s = st.select_slider(f"枠番ST", range(7), 0, get_symbol, key=f"t1_s_{i}")
-                    raw.append({"艇番": i, "score": (m*0.25+t*0.2+w*0.3+s*0.25), "モーター":m, "当地勝率":t, "枠番勝率":w, "枠番スタート":s})
-            if st.form_submit_button("🔥 統計で確定"):
-                df_res = pd.DataFrame(raw)
-                df_res["予想％"] = (df_res["score"]/df_res["score"].sum()*100).round(1)
-                st.session_state["res"] = df_res; st.dataframe(df_res.style.apply(style_by_rank, axis=0))
+            # --- グラフ表示エリア（ボタンの外に出すことで保持される） ---
+            if "auto_weights" in st.session_state:
+                aw = st.session_state["auto_weights"]
+                fig_pie = px.pie(
+                    names=list(aw.keys()), 
+                    values=list(aw.values()), 
+                    hole=0.4, 
+                    title=f"📊 {r_place} 統計的な重要度",
+                    color_discrete_sequence=px.colors.qualitative.Pastel
+                )
+                fig_pie.update_traces(textposition='inside', textinfo='percent+label')
+                st.plotly_chart(fig_pie, use_container_width=True)
+                
+                with st.expander("📝 解析値の生データ"):
+                    st.json(aw)
+            else:
+                # 解析前のガイド表示
+                st.info("上のボタンを押すと、読み込んだ過去データから「どの項目が着順に影響しているか」を自動計算し、グラフを表示します。")
+        else:
+            st.warning("👈 まずはサイドバーからデータを読み込んでください")
 
 # --- タブ2: 直感気配解析（ここが会場ごとに変わるようになります） ---
 with tab2:
@@ -195,3 +204,4 @@ with tab2:
 with tab3:
     if "res" in st.session_state:
         st.success("解析データが準備できています。画像を生成してください。")
+
