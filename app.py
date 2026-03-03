@@ -50,7 +50,7 @@ def create_final_image(place, num, df_live):
     return img
 
 # ==========================================
-# 2. サイドバー（広告枠追加）
+# 2. サイドバー
 # ==========================================
 with st.sidebar:
     st.header("📋 レース情報")
@@ -59,7 +59,15 @@ with st.sidebar:
     st.divider()
     st.info(f"📍 選択中: {r_place} {r_num}R")
 
-
+    # --- 忍者AdMax広告コード（サイドバー最下部） ---
+    st.write("")
+    st.caption("スポンサーリンク")
+    ad_code = """
+    <div style="display:flex; justify-content:center;">
+        <script src="https://adm.shinobi.jp/s/00848ad75df65c15ca7f98de1efcf942"></script>
+    </div>
+    """
+    components.html(ad_code, height=260)
 
 # ==========================================
 # 3. メインレイアウト
@@ -67,78 +75,74 @@ with st.sidebar:
 tab1, tab2, tab3 = st.tabs(["📝 簡易事前予想", "🔥 直前気配解析", "📸 SNS画像生成"])
 
 with tab1:
-    st.subheader("📊 事前データスコアリング")
+    st.subheader("📊 事前スコアリング")
+    # スマホ向けに2列構成に変更（1→2、3→4、5→6と縦に並びやすく、順番が崩れにくい）
     with st.form("pre_form"):
         pre_raw = []
-        cols = st.columns(3)
+        # 列数を 3 から 2 に変更してスマホでの視認性をアップ
+        cols = st.columns(2)
         for i in range(1, 7):
-            with cols[(i-1)%3]:
-                st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:5px; text-align:center; font-weight:bold;">{i}号艇</div>', unsafe_allow_html=True)
+            # (i-1)%2 により、左列(1,3,5)、右列(2,4,6)に固定
+            with cols[(i-1)%2]:
+                st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:8px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:5px; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
                 m = st.select_slider(f"モーター", range(7), 0, get_symbol, key=f"pre_m_{i}")
                 t = st.select_slider(f"当地勝率", range(7), 0, get_symbol, key=f"pre_t_{i}")
                 w = st.select_slider(f"枠番勝率", range(7), 0, get_symbol, key=f"pre_w_{i}")
                 s = st.select_slider(f"枠番ST", range(7), 0, get_symbol, key=f"pre_s_{i}")
                 score = (m * 0.25 + t * 0.20 + w * 0.35 + s * 0.20)
                 pre_raw.append({"艇番": i, "score": score, "モーター": get_symbol(m), "当地": get_symbol(t), "枠番勝率": get_symbol(w), "枠番ST": get_symbol(s)})
+                st.markdown("---") # 艇ごとの区切り線
+        
         submitted_pre = st.form_submit_button("事前ランキングを確定", use_container_width=True, type="primary")
 
     if submitted_pre:
         df_pre = pd.DataFrame(pre_raw).sort_values("score", ascending=False)
         st.markdown("### 🏆 事前注目ランク")
+        # 結果表示もスマホで見やすく縦に並ぶように調整
         card_cols = st.columns(3)
         for idx, row in enumerate(df_pre.head(3).itertuples()):
             with card_cols[idx]:
-                st.markdown(f'<div style="background:{boat_bg[row.艇番]}; color:{boat_tx[row.艇番]}; padding:15px; border-radius:10px; border:2px solid #ddd; text-align:center;">'
-                            f'<div style="font-size:1rem;">Rank {idx+1}</div>'
-                            f'<div style="font-size:3rem; font-weight:bold;">{row.艇番}</div>'
-                            f'<div style="font-size:1rem;">Score: {row.score:.2f}</div></div>', unsafe_allow_html=True)
+                st.markdown(f'<div style="background:{boat_bg[row.艇番]}; color:{boat_tx[row.艇番]}; padding:10px; border-radius:10px; border:2px solid #ddd; text-align:center; margin-bottom:10px;">'
+                            f'<div style="font-size:0.8rem;">Rank {idx+1}</div>'
+                            f'<div style="font-size:2rem; font-weight:bold;">{row.艇番}</div>'
+                            f'<div style="font-size:0.8rem;">Score: {row.score:.2f}</div></div>', unsafe_allow_html=True)
         st.dataframe(df_pre[["艇番", "score", "モーター", "当地", "枠番勝率", "枠番ST"]], use_container_width=True, hide_index=True)
 
 with tab2:
-    st.subheader(f"🏟️ {r_place} 直前気配補正解析")
-    col_input, col_graph = st.columns([3, 2])
-    with col_input:
-        with st.form("live_form"):
-            live_raw = []
-            l_cols = st.columns(2)
-            for i in range(1, 7):
-                with l_cols[(i-1)%2]:
-                    st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:2px; border-radius:4px; text-align:center; font-weight:bold;">{i}号艇</div>', unsafe_allow_html=True)
-                    f1 = st.select_slider(f"展示気配", range(7), 0, get_symbol, key=f"live_f1_{i}")
-                    f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
-                    f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
-                    f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
-                    corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-                    live_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
-                    live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
-            submitted_live = st.form_submit_button(f"{r_place}の特性で最終解析", use_container_width=True, type="primary")
-
-    with col_graph:
-        st.markdown("##### 会場別補正ウェイト")
-        c = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-        fig = px.bar(x=list(c.keys()), y=list(c.values()), color=list(c.keys()), labels={'x':'項目', 'y':'重要度'})
-        fig.update_layout(showlegend=False, height=300)
-        st.plotly_chart(fig, use_container_width=True)
+    st.subheader(f"🏟️ {r_place} 解析")
+    # スマホではグラフを下に回す
+    with st.form("live_form"):
+        live_raw = []
+        l_cols = st.columns(2) # 直前解析も2列に
+        for i in range(1, 7):
+            with l_cols[(i-1)%2]:
+                st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:4px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
+                f1 = st.select_slider(f"展示", range(7), 0, get_symbol, key=f"live_f1_{i}")
+                f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
+                f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
+                f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
+                corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
+                live_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
+                live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
+        submitted_live = st.form_submit_button(f"{r_place}で解析実行", use_container_width=True, type="primary")
 
     if submitted_live:
         df_live = pd.DataFrame(live_raw).sort_values("score", ascending=False)
         total_s = df_live["score"].sum()
         df_live["期待値"] = (df_live["score"] / total_s * 100).round(1) if total_s > 0 else 0
         st.session_state["final_res"] = df_live
-        st.markdown("### 🏁 最終気配ランキング")
-        st.dataframe(df_live[["艇番", "期待値", "展示", "直線", "回り足", "一周"]].style.highlight_max(axis=0, subset=["期待値"], color="#ff4b4b"), use_container_width=True, hide_index=True)
+        st.markdown("### 🏁 解析結果")
+        st.dataframe(df_live[["艇番", "期待値", "展示", "直線", "回り足", "一周"]], use_container_width=True, hide_index=True)
 
 with tab3:
-    st.subheader("📸 予想画像生成")
+    st.subheader("📸 画像生成")
     if "final_res" in st.session_state:
-        if st.button("✨ 最終予想画像を生成", use_container_width=True, type="primary"):
+        if st.button("✨ 予想画像を生成", use_container_width=True, type="primary"):
             with st.spinner("デザイン構築中..."):
                 img = create_final_image(r_place, r_num, st.session_state["final_res"])
-                st.image(img, use_container_width=True, caption="SNS投稿用プレビュー")
+                st.image(img, use_container_width=True)
                 buf = io.BytesIO()
                 img.save(buf, format="PNG")
-                st.download_button(label="💾 画像を保存する", data=buf.getvalue(), file_name=f"yoso_{r_place}_{r_num}R.png", mime="image/png", use_container_width=True)
+                st.download_button(label="💾 画像を保存", data=buf.getvalue(), file_name=f"yoso_{r_place}_{r_num}R.png", mime="image/png", use_container_width=True)
     else:
-        st.warning("⚠️ タブ2で「最終解析」を実行すると、ここに画像生成メニューが表示されます。")
-
-
+        st.info("タブ2で「解析実行」してください。")
