@@ -114,4 +114,58 @@ with st.form("input_form"):
     cols_input = st.columns(2)
     for i in range(1, 7):
         with cols_input[(i-1)%2]:
-            st.markdown(f"""
+            st.markdown(f"""<div style="background:#f1f3f5; border-left:5px solid #2d3436; padding:5px 10px; border-radius:4px; margin-bottom:5px;"><b>{i}号艇</b></div>""", unsafe_allow_html=True)
+            m = st.select_slider("🚀 モーター", options=range(7), value=0, format_func=get_symbol, key=f"m_{i}")
+            t = st.select_slider("🏟️ 当地勝率", options=range(7), value=0, format_func=get_symbol, key=f"t_{i}")
+            w = st.select_slider("📈 枠番勝率", options=range(7), value=0, format_func=get_symbol, key=f"w_{i}")
+            s = st.select_slider("⏱️ 枠番スタート", options=range(7), value=0, format_func=get_symbol, key=f"s_{i}")
+            
+            score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
+            raw_data.append({"艇番": i, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s, "総合スコア": score})
+            
+    submitted = st.form_submit_button("📊 解析 ＆ SNS画像生成", use_container_width=True, type="primary")
+
+if submitted:
+    df = pd.DataFrame(raw_data)
+    if df["総合スコア"].sum() == 0:
+        st.warning("⚠️ 評価を入力してください。")
+    else:
+        # --- データ加工 ---
+        rank_dict = {"艇番": [f"{i}号艇" for i in range(1, 7)]}
+        items_map = [("🚀 モーター", "モーター"), ("🏟️ 当地勝率", "当地勝率"), ("📈 枠番勝率", "枠番勝率"), ("⏱️ 枠番スタート", "枠番スタート")]
+        
+        for label, col in items_map:
+            df[f'{col}_順位'] = df[col].rank(method='min', ascending=False)
+            rank_dict[label] = [f"{int(r)}位({get_symbol(int(v))})" for r, v in zip(df[f'{col}_順位'], df[col])]
+        
+        df_rank = pd.DataFrame(rank_dict).set_index("艇番")
+        
+        # 総合％
+        total_score = df["総合スコア"].sum()
+        df["予想％"] = (df["総合スコア"] / total_score * 100).round(1)
+        df_sorted = df.sort_values("予想％", ascending=False).reset_index(drop=True)
+        # 100%補正
+        diff = 100.0 - df_sorted["予想％"].sum()
+        df_sorted.loc[0, "予想％"] = round(df_sorted.loc[0, "予想％"] + diff, 1)
+
+        # --- 画像生成 ＆ 表示 ---
+        st.divider()
+        st.subheader("🖼️ 生成されたSNS用画像")
+        
+        img = create_sns_image(race_info, df_rank, df_sorted)
+        st.image(img, use_container_width=True)
+
+        # ダウンロード
+        buf = io.BytesIO()
+        img.save(buf, format="PNG")
+        st.download_button(
+            label="💾 この画像を保存する (PNG)",
+            data=buf.getvalue(),
+            file_name=f"yoso_{r_place}_{r_num}R.png",
+            mime="image/png",
+            use_container_width=True
+        )
+
+        # Web表示用のテーブル（確認用）
+        with st.expander("詳細データを確認"):
+            st.table(df_rank)
