@@ -77,7 +77,7 @@ with st.sidebar:
     
     # 🔗 スプレッドシートID設定
     SS_ID_1 = "1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4"
-    SS_ID_2 = "ここに2つ目のスプレッドシートIDを入力"
+    SS_ID_2 = "1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII"
     
     if st.button("🔄 2つのファイルを読み込み", use_container_width=True, type="primary"):
         with st.spinner("2つのファイルを読み込み中..."):
@@ -192,3 +192,4 @@ with tab3:
             st.image(img)
             buf = io.BytesIO(); img.save(buf, format="PNG")
             st.download_button("💾 画像を保存", buf.getvalue(), f"yoso_{r_place}_{r_num}R.png", "image/png")
+
