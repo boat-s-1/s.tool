@@ -94,49 +94,63 @@ with tab_analytica:
             df_base = st.session_state["base_df"]
             df_base.columns = [c.strip() for c in df_base.columns]
             
+            # ボタン
             if st.button("📈 過去データから最適重みを抽出", use_container_width=True):
                 with st.spinner("統計解析中..."):
                     target_cols = ["展示", "直線", "回り足", "一周", "ST"]
                     avail = [c for c in target_cols + ["着順"] if c in df_base.columns]
                     work_df = df_base[avail].copy()
                     
-                    # --- 文字データを数値に変換する特殊処理 ---
                     if "着順" in work_df.columns:
-                        # S0 -> 0, NULL -> 空白へ置換
                         work_df["着順"] = work_df["着順"].astype(str).str.replace('S', '').replace('NULL', np.nan)
                     
                     for col in work_df.columns:
                         work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
                     
-                    # タイムのNULLを平均値で補完（1行も無駄にしない）
                     for col in target_cols:
                         if col in work_df.columns:
                             avg_val = work_df[col].mean()
                             if pd.notna(avg_val):
                                 work_df[col] = work_df[col].fillna(avg_val)
                     
-                    # 着順が確定している行を抽出
                     clean_df = work_df.dropna(subset=["着順"])
-                    # 着順0（S0など）を一旦除外して統計精度を上げる
                     clean_df = clean_df[clean_df["着順"] > 0]
                     
-                    st.write(f"🔍 解析対象: {len(df_base)}件 / 有効データ: **{len(clean_df)}**件")
-
-                    if len(clean_df) < 5:
-                        st.warning("⚠️ 数値データが極端に不足しています。全項目0.2で仮設定します。")
-                        st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
-                    else:
-                        # 相関計算
+                    if len(clean_df) >= 5:
                         corrs = {col: abs(clean_df[col].corr(clean_df["着順"])) for col in target_cols if col in clean_df.columns}
                         total = sum(corrs.values())
                         if total == 0: total = 1
+                        # 【重要】結果をsession_stateに保存する
                         st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-                        st.success("✅ 重みの抽出に成功しました！")
+                        st.success(f"✅ 成功！ 有効データ: {len(clean_df)}件")
+                    else:
+                        st.error("有効な数値データが足りません。")
 
+            # --- 修正ポイント：ボタンの外側にグラフ表示を置く ---
             if "auto_weights" in st.session_state:
                 aw = st.session_state["auto_weights"]
-                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=.4, title="統計から導いた重要項目")
+                # グラフ用データ作成
+                weight_df = pd.DataFrame({
+                    "項目": list(aw.keys()),
+                    "重要度": list(aw.values())
+                })
+                # Plotlyで円グラフ作成
+                fig = px.pie(
+                    weight_df, 
+                    values='重要度', 
+                    names='項目', 
+                    hole=.4,
+                    color_discrete_sequence=px.colors.sequential.RdBu,
+                    title=f"📊 {r_place} 統計解析結果"
+                )
+                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig.update_layout(showlegend=False, margin=dict(t=50, b=0, l=0, r=0))
+                
+                # グラフを表示
                 st.plotly_chart(fig, use_container_width=True)
+                
+                # 数値でも表示
+                st.info("💡 この比率を元に、右側の予想スコアが配分されます。")
         else:
             st.info("サイドバーからデータを読み込んでください")
 
@@ -184,3 +198,4 @@ with tab_sns:
             buf = io.BytesIO()
             img.save(buf, format="PNG")
             st.download_button("💾 保存", buf.getvalue(), f"yoso_{r_num}.png", "image/png", use_container_width=True)
+
