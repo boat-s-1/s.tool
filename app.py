@@ -11,7 +11,7 @@ from google.oauth2.service_account import Credentials
 import plotly.express as px
 
 # ==========================================
-# 1. 基本設定・認証
+# 1. 基本設定
 # ==========================================
 st.set_page_config(page_title="競艇専門紙 Pro Analytica", layout="wide", page_icon="📝")
 
@@ -101,6 +101,7 @@ def get_yoso_mark(val):
 # ==========================================
 # 3. メインアプリ
 # ==========================================
+
 with st.sidebar:
     st.title("📝 専門紙設定")
     r_place = st.selectbox("📍 開催地", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
@@ -132,16 +133,39 @@ with tab_analytica:
     col_l, col_r = st.columns([1, 1.5])
     
     with col_l:
-        st.subheader("📊 解析バランス")
-        fig = px.pie(names=["モーター", "当地", "枠番", "ST"], values=[w_m, w_t, w_w, w_s], hole=0.4)
-        st.plotly_chart(fig, use_container_width=True)
-        
         if "base_df" in st.session_state:
-            st.subheader("🤖 統計データ")
+            st.subheader("🤖 統計データ可視化")
+            # どの艇のグラフを出すか選択
+            target_boat = st.selectbox("📊 グラフ表示する艇を選択", range(1, 7))
+            
+            # 選択された艇のデータを抽出
+            boat_data = st.session_state["base_df"][st.session_state["base_df"]["boat_num"] == target_boat]
+            
+            if not boat_data.empty:
+                # グラフ用の値を準備
+                v_m = boat_data.iloc[0].get("モーター", 0)
+                v_t = boat_data.iloc[0].get("当地勝率", 0)
+                v_w = boat_data.iloc[0].get("枠番勝率", 0)
+                v_s = boat_data.iloc[0].get("平均ST", 0)
+                
+                fig = px.pie(
+                    names=["モーター", "当地勝率", "枠番勝率", "平均ST"],
+                    values=[v_m, v_t, v_w, v_s],
+                    hole=0.4,
+                    title=f"{target_boat}号艇の統計能力値",
+                    color_discrete_sequence=px.colors.qualitative.Bold
+                )
+                st.plotly_chart(fig, use_container_width=True)
+                
+                
+            
+            st.divider()
             st.dataframe(st.session_state["base_df"], hide_index=True)
+        else:
+            st.info("サイドバーから【統計データ取得】を押してください。")
 
     with col_r:
-        st.subheader("📝 直感評価入力")
+        st.subheader("📝 本日の気配評価入力")
         with st.form("input_form"):
             user_evals = []
             for i in range(1, 7):
@@ -151,7 +175,7 @@ with tab_analytica:
                     w = st.select_slider(f"枠番気配_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
                     s = st.select_slider(f"直前ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
                     user_evals.append({"boat_num": i, "u_m": m, "u_t": t, "u_w": w, "u_s": s})
-            submitted = st.form_submit_button("🔥 解析実行", use_container_width=True, type="primary")
+            submitted = st.form_submit_button("🔥 統計×気配 で解析実行", use_container_width=True, type="primary")
 
         if submitted:
             u_df = pd.DataFrame(user_evals)
@@ -171,7 +195,7 @@ with tab_analytica:
 
             final_df["expected_pct"] = (final_df["score"] / final_df["score"].sum() * 100).round(1)
             st.session_state["analytica_result"] = final_df
-            st.success("解析完了！")
+            st.success("解析成功！")
             st.table(final_df)
 
 with tab_sns:
@@ -182,6 +206,4 @@ with tab_sns:
                 st.image(img, use_container_width=True)
                 buf = io.BytesIO()
                 img.save(buf, format="PNG")
-                st.download_button("📲 保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
-    else:
-        st.warning("先に解析を実行してください。")
+                st.download_button("📲 画像を保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
