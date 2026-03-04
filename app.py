@@ -8,143 +8,101 @@ import plotly.express as px
 import streamlit.components.v1 as components
 
 # ==========================================
-# 1. 基本設定
+# 1. 基本設定とデータ読み込み
 # ==========================================
-st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="競艇Pro Analytica - 実績解析版", layout="wide", page_icon="🎯")
 
-# 会場別特性補正値（全国24場＋デフォルト）
-PLACE_CORRECTIONS = {
-    "桐生": {"展示": 0.20, "直線": 0.20, "回り足": 0.30, "一周": 0.30, "サンプル数": 1450, "イン逃げ率": 52.4},
-    "戸田": {"展示": 0.10, "直線": 0.50, "回り足": 0.20, "一周": 0.20, "サンプル数": 1280, "イン逃げ率": 43.8},
-    "江戸川": {"展示": 0.10, "直線": 0.20, "回り足": 0.50, "一周": 0.20, "サンプル数": 980, "イン逃げ率": 45.2},
-    "平和島": {"展示": 0.20, "直線": 0.30, "回り足": 0.30, "一周": 0.20, "サンプル数": 1150, "イン逃げ率": 45.8},
-    "多摩川": {"展示": 0.30, "直線": 0.20, "回り足": 0.20, "一周": 0.30, "サンプル数": 1200, "イン逃げ率": 53.4},
-    "浜名湖": {"展示": 0.30, "直線": 0.30, "回り足": 0.20, "一周": 0.20, "サンプル数": 1300, "イン逃げ率": 51.5},
-    "蒲郡": {"展示": 0.30, "直線": 0.20, "回り足": 0.30, "一周": 0.20, "サンプル数": 1500, "イン逃げ率": 54.2},
-    "常滑": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25, "サンプル数": 1400, "イン逃げ率": 55.1},
-    "津": {"展示": 0.20, "直線": 0.30, "回り足": 0.30, "一周": 0.20, "サンプル数": 1350, "イン逃げ率": 54.8},
-    "三国": {"展示": 0.30, "直線": 0.20, "回り足": 0.20, "一周": 0.30, "サンプル数": 1250, "イン逃げ率": 56.4},
-    "びわこ": {"展示": 0.20, "直線": 0.20, "回り足": 0.40, "一周": 0.20, "サンプル数": 1100, "イン逃げ率": 51.9},
-    "住之江": {"展示": 0.40, "直線": 0.10, "回り足": 0.30, "一周": 0.20, "サンプル数": 1560, "イン逃げ率": 58.9},
-    "尼崎": {"展示": 0.30, "直線": 0.20, "回り足": 0.30, "一周": 0.20, "サンプル数": 1400, "イン逃げ率": 56.2},
-    "鳴門": {"展示": 0.20, "直線": 0.40, "回り足": 0.20, "一周": 0.20, "サンプル数": 1050, "イン逃げ率": 50.1},
-    "丸亀": {"展示": 0.30, "直線": 0.20, "回り足": 0.30, "一周": 0.20, "サンプル数": 1450, "イン逃げ率": 56.5},
-    "児島": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25, "サンプル数": 1300, "イン逃げ率": 55.8},
-    "宮島": {"展示": 0.20, "直線": 0.20, "回り足": 0.35, "一周": 0.25, "サンプル数": 1200, "イン逃げ率": 56.9},
-    "徳山": {"展示": 0.40, "直線": 0.10, "回り足": 0.20, "一周": 0.30, "サンプル数": 1600, "イン逃げ率": 64.1},
-    "下関": {"展示": 0.45, "直線": 0.15, "回り足": 0.20, "一周": 0.20, "サンプル数": 1700, "イン逃げ率": 62.5},
-    "若松": {"展示": 0.30, "直線": 0.20, "回り足": 0.30, "一周": 0.20, "サンプル数": 1550, "イン逃げ率": 57.3},
-    "芦屋": {"展示": 0.45, "直線": 0.15, "回り足": 0.20, "一周": 0.20, "サンプル数": 1650, "イン逃げ率": 63.8},
-    "福岡": {"展示": 0.10, "直線": 0.20, "回り足": 0.50, "一周": 0.20, "サンプル数": 1100, "イン逃げ率": 53.1},
-    "佐賀": {"展示": 0.20, "直線": 0.20, "回り足": 0.30, "一周": 0.30, "サンプル数": 1350, "イン逃げ率": 54.9}, # 唐津
-    "大村": {"展示": 0.50, "直線": 0.10, "回り足": 0.20, "一周": 0.20, "サンプル数": 1800, "イン逃げ率": 68.5},
-    "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25, "サンプル数": 5000, "イン逃げ率": 50.0}
-}
+# スプレッドシートのURL（CSV出力用）
+# ※ご自身のスプレッドシートの「ウェブに公開」URLに差し替えてください
+SHEET_URL = "https://docs.google.com/spreadsheets/d/1rSzJuk5Hyv60nMwX67pCufXz45HLykyIXuqVE6wtNII/pub?output=csv"
 
+@st.cache_data(ttl=3600) # 1時間キャッシュ
+def load_and_analyze_stats():
+    try:
+        # スプレッドシートを読み込み
+        df = pd.read_csv(SHEET_URL)
+        
+        # 着順を数値化（1, 2, 3... 以外は欠損値として扱う）
+        df['着順_num'] = pd.to_numeric(df['着順'], errors='coerce')
+        
+        # 各レース内での展示タイム順位を計算
+        # 同じタイムの場合は最小順位を割り当て
+        df['展示順位'] = df.groupby(['日付', 'レース番号', '会場'])['展示'].rank(method='min')
+        
+        # --- 会場ごとの統計分析 ---
+        stats = {}
+        for place in df['会場'].unique():
+            p_df = df[df['会場'] == place]
+            
+            # 1. 展示1位の1着率
+            top_ex = p_df[p_df['展示順位'] == 1]
+            win_rate = (top_ex['着順_num'] == 1).mean() * 100
+            
+            # 2. 展示1位の3連対率（舟券貢献度）
+            show_rate = (top_ex['着順_num'] <= 3).mean() * 100
+            
+            # 3. イン逃げ率（1号艇の1着率）
+            in_nige = (p_df[p_df['艇番'] == 1]['着順_num'] == 1).mean() * 100
+            
+            stats[place] = {
+                "展示信頼度": round(win_rate, 1), # 展示1位が勝つ確率
+                "展示貢献度": round(show_rate, 1), # 展示1位が3着内に入る確率
+                "イン逃げ率": round(in_nige, 1),
+                "サンプル数": len(p_df)
+            }
+        return stats
+    except Exception as e:
+        st.error(f"データ読み込みエラー: {e}")
+        # エラー時のダミーデータ
+        return {"DEFAULT": {"展示信頼度": 35.0, "展示貢献度": 65.0, "イン逃げ率": 50.0, "サンプル数": 5000}}
+
+# 統計データの取得
+ACTUAL_STATS = load_and_analyze_stats()
+
+# デザイン用
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
 boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
-boat_colors_rgb = {1: (255,255,255), 2: (51,51,51), 3: (224,49,49), 4: (25,113,194), 5: (252,196,25), 6: (47,158,68)}
-
-def create_final_image(place, num, df_live):
-    width, height = 1200, 800
-    img = Image.new('RGB', (width, height), color=(245, 245, 245))
-    draw = ImageDraw.Draw(img)
-    draw.rectangle([0, 0, width, 150], fill=(30, 40, 60))
-    draw.text((40, 60), f"{place} {num}R FINAL YOSO", fill=(255, 255, 255))
-    records = df_live.head(3).to_dict(orient='records')
-    for i, row in enumerate(records):
-        y_off = 180 + (i * 180)
-        b_no = int(row.get('艇番', 0))
-        exp_val = row.get('期待値', 0)
-        fill_color = boat_colors_rgb.get(b_no, (200, 200, 200))
-        draw.rounded_rectangle([50, y_off, 1150, y_off + 150], radius=15, fill=fill_color, outline=(0,0,0), width=2)
-        txt_color = (0,0,0) if b_no in [1, 5] else (255,255,255)
-        info_text = f"RANK {i+1}   BOAT: {b_no}号艇   EXPECTED: {exp_val}%"
-        draw.text((80, y_off + 65), info_text, fill=txt_color)
-    draw.text((40, 750), f"Generated by Pro Analytica - {datetime.datetime.now().strftime('%Y/%m/%d')}", fill=(150, 150, 150))
-    return img
 
 # ==========================================
-# 2. サイドバー
+# 2. メインロジック
 # ==========================================
 with st.sidebar:
     st.header("📋 レース情報")
-    r_place = st.selectbox("開催地", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
+    r_place = st.selectbox("開催地", list(ACTUAL_STATS.keys()) if ACTUAL_STATS else ["桐生"])
     r_num = st.number_input("レース番号", 1, 12, 1)
+    
+    # 選択した場の実績データを表示
+    p_stat = ACTUAL_STATS.get(r_place, ACTUAL_STATS.get("DEFAULT"))
     st.divider()
-    st.info(f"📍 選択中: {r_place} {r_num}R")
-    st.write("")
-    st.caption("スポンサーリンク")
-    ad_code = '<div style="display:flex; justify-content:center;"><script src="https://adm.shinobi.jp/s/00848ad75df65c15ca7f98de1efcf942"></script></div>'
-    components.html(ad_code, height=260)
+    st.metric("実績イン逃げ率", f"{p_stat['イン逃げ率']}%")
+    st.metric("展示1位の1着率", f"{p_stat['展示信頼度']}%")
+    st.caption(f"分析対象: {p_stat['サンプル数']} レース")
 
-# ==========================================
-# 3. メインレイアウト
-# ==========================================
-tab1, tab2, tab3 = st.tabs(["📝 簡易事前予想", "🔥 直前気配解析", "📸 SNS画像生成"])
-
-with tab1:
-    st.subheader("📊 事前スコアリング")
-    with st.form("pre_form"):
-        pre_raw = []
-        for row_idx in range(3):
-            cols = st.columns(2)
-            for col_idx in range(2):
-                i = row_idx * 2 + col_idx + 1
-                with cols[col_idx]:
-                    with st.expander(f"{i}号艇の詳細入力", expanded=(i==1)):
-                        st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:5px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
-                        m = st.select_slider(f"モーター", range(7), 0, get_symbol, key=f"pre_m_{i}")
-                        t = st.select_slider(f"当地勝率", range(7), 0, get_symbol, key=f"pre_t_{i}")
-                        w = st.select_slider(f"枠番勝率", range(7), 0, get_symbol, key=f"pre_w_{i}")
-                        s = st.select_slider(f"枠番ST", range(7), 0, get_symbol, key=f"pre_s_{i}")
-                        score = (m * 0.25 + t * 0.20 + w * 0.35 + s * 0.20)
-                        pre_raw.append({"艇番": i, "score": score, "モーター": get_symbol(m), "当地": get_symbol(t), "枠番勝率": get_symbol(w), "枠番ST": get_symbol(s)})
-        submitted_pre = st.form_submit_button("事前ランキングを確定", use_container_width=True, type="primary")
-
-    if submitted_pre:
-        df_pre = pd.DataFrame(pre_raw).sort_values("score", ascending=False)
-        st.markdown("### 🏆 事前注目ランク")
-        card_cols = st.columns(3)
-        for idx, row in enumerate(df_pre.head(3).itertuples()):
-            with card_cols[idx]:
-                st.markdown(f'<div style="background:{boat_bg[row.艇番]}; color:{boat_tx[row.艇番]}; padding:10px; border-radius:10px; border:2px solid #ddd; text-align:center; margin-bottom:10px;">'
-                            f'<div style="font-size:0.8rem;">Rank {idx+1}</div>'
-                            f'<div style="font-size:2rem; font-weight:bold;">{row.艇番}</div>'
-                            f'<div style="font-size:0.8rem;">Score: {row.score:.2f}</div></div>', unsafe_allow_html=True)
-        st.dataframe(df_pre[["艇番", "score", "モーター", "当地", "枠番勝率", "枠番ST"]], use_container_width=True, hide_index=True)
+tab1, tab2, tab3 = st.tabs(["📝 簡易事前予想", "🔥 実績連動解析", "📸 SNS画像生成"])
 
 with tab2:
-    st.subheader(f"🏟️ {r_place} 直前気配解析")
+    st.subheader(f"🏟️ {r_place} 実績ベース解析")
     
-    # 会場データの取得
-    c_data = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-    # グラフ描画用（統計データを除外）
-    plot_data = {k: v for k, v in c_data.items() if k not in ["サンプル数", "イン逃げ率"]}
-    
-    # グラフ表示
-    st.markdown(f"##### {r_place}の会場別補正ウェイト")
-    fig = px.bar(x=list(plot_data.keys()), y=list(plot_data.values()), color=list(plot_data.keys()), 
-                 labels={'x':'項目', 'y':'重要度'}, color_discrete_sequence=px.colors.qualitative.Pastel)
-    fig.update_layout(showlegend=False, height=250, margin=dict(l=20, r=20, t=20, b=20))
-    st.plotly_chart(fig, use_container_width=True)
-    
-    # 📊 統計情報（イン逃げ率とサンプル数）を横並びで表示
-    stat_col1, stat_col2 = st.columns(2)
-    with stat_col1:
-        in_nige = c_data.get("イン逃げ率", 0)
-        # イン逃げ率によって色を変える演出
-        nige_color = "red" if in_nige > 60 else "blue" if in_nige < 45 else "black"
-        st.markdown(f"🚩 **イン逃げ率: <span style='color:{nige_color}; font-size:1.2rem;'>{in_nige}%</span>**", unsafe_allow_html=True)
-    with stat_col2:
-        sample_count = c_data.get("サンプル数", 0)
-        st.caption(f"💡 参照: 直近 {sample_count:,} レース")
+    # 展示信頼度に基づいた動的ウェイト設定
+    # 展示1位の1着率が高い場ほど「展示」の配分を自動で増やすロジック
+    base_weight = p_stat['展示信頼度'] / 100
+    weights = {
+        "展示": round(base_weight, 2),
+        "直線": round((1 - base_weight) * 0.3, 2),
+        "回り足": round((1 - base_weight) * 0.4, 2),
+        "一周": round((1 - base_weight) * 0.3, 2)
+    }
 
-    
+    # グラフ表示
+    fig = px.pie(values=list(weights.values()), names=list(weights.keys()), 
+                 title=f"実績から算出した『{r_place}』の重要度配分",
+                 color_discrete_sequence=px.colors.qualitative.Pastel)
+    st.plotly_chart(fig, use_container_width=True)
 
     with st.form("live_form"):
         live_raw = []
+        # スマホ配慮の2カラム形式
         for row_idx in range(3):
             l_cols = st.columns(2)
             for col_idx in range(2):
@@ -152,35 +110,24 @@ with tab2:
                 with l_cols[col_idx]:
                     with st.expander(f"{i}号艇の気配入力", expanded=(i==1)):
                         st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:4px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
-                        f1 = st.select_slider(f"展示", range(7), 0, get_symbol, key=f"live_f1_{i}")
+                        f1 = st.select_slider(f"展示(実績信頼度:{p_stat['展示信頼度']}%)", range(7), 0, get_symbol, key=f"live_f1_{i}")
                         f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
                         f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
                         f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
                         
-                        live_score = (f1 * c_data["展示"] + f2 * c_data["直線"] + f3 * c_data["回り足"] + f4 * c_data["一周"])
-                        live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
+                        score = (f1 * weights["展示"] + f2 * weights["直線"] + f3 * weights["回り足"] + f4 * weights["一周"])
+                        live_raw.append({"艇番": i, "score": score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
         
-        submitted_live = st.form_submit_button(f"{r_place}の特性を反映して最終解析", use_container_width=True, type="primary")
+        submitted_live = st.form_submit_button("実績データを反映して解析実行", use_container_width=True, type="primary")
 
     if submitted_live:
         df_live = pd.DataFrame(live_raw).sort_values("score", ascending=False)
         total_s = df_live["score"].sum()
         df_live["期待値"] = (df_live["score"] / total_s * 100).round(1) if total_s > 0 else 0
         st.session_state["final_res"] = df_live
+        
         st.markdown("### 🏁 最終解析結果")
+        # 1位の艇に「展示信頼度」に基づいたコメントを表示
+        top_boat = df_live.iloc[0]['艇番']
+        st.success(f"推奨：{top_boat}号艇。この会場は展示1位の3連対率が {p_stat['展示貢献度']}% あり、信頼度は高いです。")
         st.dataframe(df_live[["艇番", "期待値", "展示", "直線", "回り足", "一周"]], use_container_width=True, hide_index=True)
-
-with tab3:
-    st.subheader("📸 SNS画像生成")
-    if "final_res" in st.session_state:
-        if st.button("✨ 最終予想画像を生成", use_container_width=True, type="primary"):
-            with st.spinner("デザイン構築中..."):
-                img = create_final_image(r_place, r_num, st.session_state["final_res"])
-                st.image(img, use_container_width=True)
-                buf = io.BytesIO()
-                img.save(buf, format="PNG")
-                st.download_button(label="💾 画像を保存", data=buf.getvalue(), file_name=f"yoso_{r_place}_{r_num}R.png", mime="image/png", use_container_width=True)
-    else:
-        st.info("タブ2で「解析実行」してください。")
-
-
