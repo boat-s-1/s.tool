@@ -38,7 +38,7 @@ except Exception as e:
 
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
 
-# 艇の色設定 (デザイン用に少し鮮やかに変更)
+# 艇の色設定 (デザイン用に鮮やかに変更)
 boat_bg = {1: "#ffffff", 2: "#111111", 3: "#ff3b3b", 4: "#007bff", 5: "#ffc107", 6: "#28a745"}
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
 
@@ -153,14 +153,14 @@ with tab_analytica:
                 for c, name in zip(["m", "t", "w", "s"], ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]):
                     disp[name] = disp[c].apply(get_symbol)
                 
-                st.dataframe(disp[["艇番", "expected_pct", "モーター", "當地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
+                st.dataframe(disp[["艇番", "expected_pct", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
 
 # ==========================================
-# 5. SNS画像生成タブ (美デザイン版へパッチ適用)
+# 5. SNS画像生成タブ (SNS映えPremium版へパッチ適用)
 # ==========================================
 with tab_sns:
-    st.subheader("🖼️ Premium 画像作成")
-    st.caption("SNSで映える、プロ仕様のデザイン画像を生成します、")
+    st.subheader("🖼️ SNS映え Premium 画像作成")
+    st.caption("InstagramやTwitterで目を引く、洗練されたデザイン画像を生成します。")
     
     if "analytica_result" in st.session_state:
         df = st.session_state["analytica_result"]
@@ -169,85 +169,100 @@ with tab_sns:
         def create_premium_image(place_name, sorted_df):
             # 1. キャンバス & 色設定
             img_w, img_h = 1080, 1350 # インスタ等で見やすい縦長
-            bg_color = (10, 10, 15) # 漆黒
+            bg_base = (10, 12, 20) # 漆黒に近い紺
             accent_neon = (255, 60, 60) # ネオンレッド
-            grid_color = (40, 40, 50) # 深い灰色
+            accent_orange = (255, 150, 50) # ネオンオレンジ
+            text_main = (240, 240, 255) # ほぼ白
             
-            img = Image.new('RGB', (img_w, img_h), bg_color)
+            img = Image.new('RGB', (img_w, img_h), bg_base)
             draw = ImageDraw.Draw(img)
             
             # 2. フォント読込
             try:
                 # liberation fonts (linux / cloud)
                 f_title = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 65)
-                f_pct = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 75)
-                f_num = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 100)
+                f_pct = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 80)
+                f_num = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 110)
                 f_sub = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 35)
+                f_header_sub = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 38)
             except:
-                f_title = f_pct = f_num = ImageFont.load_default()
-                f_sub = ImageFont.load_default()
+                f_title = f_pct = f_num = f_sub = f_header_sub = ImageFont.load_default()
 
-            # 3. 背景アートワーク (グリッド & グラデーション)
-            for y in range(0, img_h, 80): draw.line((0, y, img_w, y), fill=grid_color, width=1)
-            for x in range(0, img_w, 80): draw.line((x, 0, x, img_h), fill=grid_color, width=1)
+            # 3. 背景アートワーク (水面とスピード感の抽象化)
+            for i in range(10):
+                lw = 1 + i
+                draw.line((0, 1350 - i*135, 1080, 0 + i*135), fill=(20, 25, 40), width=lw)
             
-            # トップの赤いグラデーションぼかし
+            # トップの赤いグラデーションぼかし (グロー効果)
             grad_layer = Image.new('RGBA', (img_w, img_h), (0,0,0,0))
             draw_grad = ImageDraw.Draw(grad_layer)
-            draw_grad.rectangle([0,0, img_w, 200], fill=(255, 60, 60, 40))
-            grad_layer = grad_layer.filter(ImageFilter.GaussianBlur(50))
+            draw_grad.rectangle([0,0, img_w, 250], fill=(255, 60, 60, 40))
+            grad_layer = grad_layer.filter(ImageFilter.GaussianBlur(60))
             img.paste(grad_layer, (0,0), grad_layer)
 
-            # 4. ヘッダー
-            today_str = datetime.date.today().strftime("%Y.%m.%d")
-            draw.text((60, 70), f"PRO ANALYTICA", fill=accent_neon, font=f_title)
-            draw.text((60, 150), f"🏟️ {place_name} | {today_str}", fill=(180, 180, 200), font=f_sub)
+            # 4. ヘッダー (ガラスモーフィズム風)
+            header_h = 240
+            header_layer = Image.new('RGBA', (960, header_h), (255,255,255, 15)) # 透過白
+            draw_h = ImageDraw.Draw(header_layer)
+            draw_h.rounded_rectangle([0, 0, 960, header_h], radius=25, fill=(255,255,255, 15), outline=(255,255,255, 30), width=2)
             
-            # メインライン
-            draw.line((60, 220, 1020, 220), fill=accent_neon, width=6)
+            # ぼかし処理
+            header_layer = header_layer.filter(ImageFilter.GaussianBlur(5))
+            img.paste(header_layer, (60, 60), header_layer)
+            
+            # ヘッダーテキスト
+            today_str = datetime.date.today().strftime("%Y.%m.%d")
+            draw.text((100, 95), f"PRO ANALYTICA", fill=accent_neon, font=f_title)
+            draw.text((100, 185), f"🏟️ {place_name} | {today_str}", fill=text_main, font=f_header_sub)
             
             # 5. ランキング描画
             for i, row in enumerate(sorted_df.itertuples()):
-                y = 280 + (i * 170)
+                y = 350 + (i * 165)
                 b_num = int(row.boat_num)
                 b_pct = row.expected_pct
                 b_color_str = boat_bg[b_num]
                 # RGB変換
                 b_rgb = tuple(int(b_color_str.lstrip('#')[j:j+2], 16) for j in (0, 2, 4))
                 
-                # --- (1) 艇番ボックス (立体的な光沢仕上げ) ---
-                # ネオンゴースト (背後のぼかした光)
+                # --- (1) 艇番ボックス (ネオン＆立体) ---
+                # ネオンゴースト
                 neon_g = Image.new('RGBA', (200, 200), (0,0,0,0))
                 draw_g = ImageDraw.Draw(neon_g)
-                draw_g.rounded_rectangle([30, 30, 170, 170], radius=30, fill=(*b_rgb, 80))
+                draw_g.rounded_rectangle([30, 30, 170, 170], radius=35, fill=(*b_rgb, 70))
                 neon_g = neon_g.filter(ImageFilter.GaussianBlur(25))
                 img.paste(neon_g, (30, y-30), neon_g)
                 
-                # 本体ボックス (金属的なグラデーション風)
-                draw.rounded_rectangle([60, y, 180, y + 120], radius=20, fill=b_rgb)
+                # 本体ボックス
+                draw.rounded_rectangle([60, y, 180, y + 120], radius=25, fill=b_rgb, outline=(255,255,255, 30), width=2)
                 # 艇番
-                draw.text((88, y + 15), str(b_num), fill=boat_tx[b_num], font=f_num)
+                draw.text((90, y + 10), str(b_num), fill=boat_tx[b_num], font=f_num)
 
-                # --- (2) パーセント & バー ---
+                # --- (2) パーセント & バー (グラデーション＆グロー) ---
                 bar_start_x = 220
-                draw.text((bar_start_x, y), f"EXPECTED PROBABILITY", fill=(150, 150, 170), font=f_sub)
+                draw.text((bar_start_x, y + 5), f"EXPECTED PROBABILITY", fill=(180, 180, 200), font=f_sub)
                 
-                # バーの背景
-                draw.rounded_rectangle([bar_start_x, y+60, 950, y+100], radius=15, fill=(30, 30, 40))
+                # バー背景
+                draw.rounded_rectangle([bar_start_x, y+65, 980, y+105], radius=20, fill=(30, 35, 50))
                 
-                # バー (ネオンレッド〜オレンジのグラデーション)
-                # ※ここではPILでグラデは難しいため、2色のバーを重ねることで表現
-                bar_w = int(b_pct * 7.7) # 最大770px
-                if bar_w > 10:
-                    draw.rounded_rectangle([bar_start_x, y+60, bar_start_x + bar_w, y+100], radius=15, fill=accent_neon)
-                    # 先端を少し明るく
-                    draw.rounded_rectangle([bar_start_x + bar_w - 10, y+60, bar_start_x + bar_w, y+100], radius=15, fill=(255, 120, 120))
+                # バー本体 (グラデーション表現として3色を重ねる)
+                bar_max_w = 760
+                bar_w = int(b_pct / 100 * bar_max_w)
+                if bar_w > 15:
+                    # 赤(ベース)
+                    draw.rounded_rectangle([bar_start_x, y+65, bar_start_x + bar_w, y+105], radius=20, fill=accent_neon)
+                    # オレンジ(重ね)
+                    over_w = int(bar_w * 0.7)
+                    if over_w > 10:
+                        draw.rounded_rectangle([bar_start_x, y+65, bar_start_x + over_w, y+105], radius=20, fill=(255, 100, 60))
+                    # 黄色(先端グロー)
+                    if bar_w > 30:
+                        draw.rounded_rectangle([bar_start_x + bar_w - 20, y+65, bar_start_x + bar_w, y+105], radius=20, fill=(255, 220, 100))
                 
-                # パーセント数字 (右寄せ)
-                draw.text(( bar_start_x + 560, y-10), f"{b_pct}%", fill=(255, 255, 255), font=f_pct)
+                # パーセント数字
+                draw.text(( 780, y + 5), f"{b_pct}%", fill=text_main, font=f_pct)
 
             # 6. フッター
-            draw.text((60, 1270), "Generated by Pro Analytica ©AI Prediction System", fill=(80, 80, 100), font=f_sub)
+            draw.text((60, 1280), "Generated by Pro Analytica ©AI Prediction System", fill=(100, 105, 130), font=f_sub)
             
             return img
 
@@ -256,13 +271,13 @@ with tab_sns:
         
         # プレビュー表示
         img_preview = create_premium_image(r_place, sorted_df)
-        st.image(img_preview, caption=f"✨ {r_place} Premium Yoso", use_container_width=True)
+        st.image(img_preview, caption=f"✨ {r_place} Premium Yoso (SNS対応)", use_container_width=True)
         
         # ダウンロード
         buf = io.BytesIO()
         img_preview.save(buf, format="PNG")
         st.download_button(
-            label="📲 Premium画像を保存",
+            label="📲 Premium画像をカメラロールに保存",
             data=buf.getvalue(),
             file_name=f"Premium_{r_place}_{datetime.datetime.now().strftime('%m%d_%H%M')}.png",
             mime="image/png",
