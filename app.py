@@ -56,19 +56,6 @@ with st.sidebar:
     race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal=True)
     
     st.divider()
-    # ★ Simple版から移植：配点設定スライダー
-    st.markdown("### ⚙️ 配点設定")
-    st.caption("手動で計算の重みを調整できます")
-    w_m = st.slider("モーターの重み", 0, 100, 25)
-    w_t = st.slider("当地勝率の重み", 0, 100, 20)
-    w_w = st.slider("枠番勝率の重み", 0, 100, 30)
-    w_s = st.slider("スタートの重み", 0, 100, 25)
-    
-    total_w = w_m + w_t + w_w + w_s
-    if total_w != 100:
-        st.warning(f"合計が {total_w}% です。100%になるよう調整してください。")
-    
-    st.divider()
     target_sheet = f"{r_place}_{race_type_val}統計"
     if st.button("🔄 スプレッドシートを取得", use_container_width=True, type="primary"):
         with st.spinner("通信中..."):
@@ -93,8 +80,7 @@ with tab_analytica:
 
     # --- 左側：統計解析エリア ---
     with col_l:
-        st.subheader("🤖 最適配点の算出（参考）")
-        st.caption("過去データに基づく理想的な配点の可視化です")
+        st.subheader("🤖 最適配点の算出")
         if "base_df" in st.session_state:
             if st.button("📈 過去の実績から重みを計算", use_container_width=True):
                 df_base = st.session_state["base_df"]
@@ -133,40 +119,39 @@ with tab_analytica:
         st.subheader("📝 直前気配入力")
         with st.form("input_form"):
             results = []
+            # 1-2, 3-4, 5-6の順で表示されるよう2列構成を3回繰り返す
             for row_idx in range(3):
                 row_cols = st.columns(2)
                 for col_idx in range(2):
                     boat_num = row_idx * 2 + col_idx + 1
                     with row_cols[col_idx]:
+                        # 艇番ラベル
                         st.markdown(f'<div class="boat-box" style="background:{boat_bg[boat_num]}; color:{boat_tx[boat_num]};">{boat_num}号艇</div>', unsafe_allow_html=True)
                         
+                        # アコーディオン（初期値は閉じた状態）
                         with st.expander(f"詳細入力", expanded=False):
                             m = st.select_slider(f"モーター_{boat_num}", range(7), 3, get_symbol, key=f"m_{boat_num}")
                             t = st.select_slider(f"当地勝率_{boat_num}", range(7), 3, get_symbol, key=f"t_{boat_num}")
                             w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
                             s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
                             
-                            # ★ サイドバーのスライダー値(w_m, w_t, w_w, w_s)を使って計算
-                            score = (m * (w_m/100) + t * (w_t/100) + w * (w_w/100) + s * (w_s/100))
+                            score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
                             results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
 
             submitted = st.form_submit_button("🔥 解析確定", use_container_width=True, type="primary")
 
         if submitted:
-            if total_w != 100:
-                st.error("配点設定の合計を100%にしてください")
-            else:
-                df = pd.DataFrame(results)
-                if df["score"].sum() > 0:
-                    df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
-                    st.session_state["analytica_result"] = df
-                    st.success("解析完了！")
-                    
-                    disp = df.copy()
-                    for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
-                        disp[c] = disp[c].apply(get_symbol)
-                    disp["艇番"] = disp["艇番"].apply(lambda x: f"{int(x)}号艇")
-                    st.dataframe(disp[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
+            df = pd.DataFrame(results)
+            if df["score"].sum() > 0:
+                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
+                st.session_state["analytica_result"] = df
+                st.success("解析完了！")
+                
+                disp = df.copy()
+                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
+                    disp[c] = disp[c].apply(get_symbol)
+                disp["艇番"] = disp["艇番"].apply(lambda x: f"{int(x)}号艇")
+                st.dataframe(disp[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
 
 with tab_sns:
     st.subheader("🖼️ 画像生成")
