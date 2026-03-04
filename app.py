@@ -82,42 +82,50 @@ with tab_analytica:
         st.subheader("🤖 最適配点の算出")
         if "base_df" in st.session_state:
             if st.button("📈 過去の実績から重みを計算", use_container_width=True):
-                # ... (以前の統計ロジック)
-                st.session_state["auto_weights"] = {"展示": 0.3, "直線": 0.2, "回り足": 0.2, "一周": 0.2, "ST": 0.1} # ダミー
+                # 統計ロジックの実行
+                df_base = st.session_state["base_df"]
+                df_base.columns = [c.strip() for c in df_base.columns]
+                target_cols = ["展示", "直線", "回り足", "一周", "ST"]
+                avail = [c for c in target_cols + ["着順"] if c in df_base.columns]
+                work_df = df_base[avail].copy()
+                if "着順" in work_df.columns:
+                    work_df["着順"] = work_df["着順"].astype(str).str.replace('S', '').replace('NULL', '')
+                for col in work_df.columns:
+                    work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
+                work_df = work_df.fillna(work_df.mean())
+                clean_df = work_df[work_df["着順"] > 0]
+                
+                if len(clean_df) >= 2:
+                    corrs = {}
+                    for col in target_cols:
+                        if col in clean_df.columns:
+                            val = abs(clean_df[col].corr(clean_df["着順"]))
+                            corrs[col] = val if pd.notna(val) and val != 0 else 0.01
+                        else:
+                            corrs[col] = 0.01
+                    total = sum(corrs.values())
+                    st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
+                    st.success(f"✅ {r_place}の解析が完了しました")
+                else:
+                    st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
+                    st.warning("⚠️ データ不足のため均等配分しました")
             
             if "auto_weights" in st.session_state:
                 aw = st.session_state["auto_weights"]
-                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=0.4)
+                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=0.4, title=f"📊 {r_place}の重要度比率")
+                fig.update_traces(textposition='inside', textinfo='percent+label')
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("サイドバーからデータを読み込んでください")
 
     # --- 右側：当日予想入力エリア ---
     with col_r:
-        st.subheader("📝 直前気配入力")
+        st.subheader("📝 直前気気配入力")
         with st.form("input_form"):
             results = []
-            grid = st.columns(2)
-            for i in range(1, 7):
-                with grid[(i-1)%2]:
-                    st.markdown(f'<div class="boat-box" style="background:{boat_bg[i]}; color:{boat_tx[i]};">{i}号艇</div>', unsafe_allow_html=True)
-                    m = st.select_slider(f"モーター_{i}", range(7), 3, get_symbol)
-                    t = st.select_slider(f"当地勝率_{i}", range(7), 3, get_symbol)
-                    w = st.select_slider(f"枠番勝率_{i}", range(7), 3, get_symbol)
-                    score = (m*0.3 + t*0.3 + w*0.4) # 簡易計算
-                    results.append({"艇番": i, "score": score, "モーター": get_symbol(m)})
-
-            if st.form_submit_button("🔥 解析確定", use_container_width=True, type="primary"):
-                df = pd.DataFrame(results)
-                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
-                st.session_state["analytica_result"] = df
-                st.success("解析完了！SNSタブで画像を生成できます。")
-                st.dataframe(df[["艇番", "予想％", "モーター"]], use_container_width=True, hide_index=True)
-
-with tab_sns:
-    st.subheader("🖼️ 画像生成")
-    if "analytica_result" in st.session_state:
-        # 以前の画像生成ロジック...
-        st.info("ここに生成ボタンと画像が表示されます")
-    else:
-        st.warning("先に「当日予想」を確定させてください。")
+            # 艇番が1,2,3,4,5,6の順に並ぶよう、ループ内で2列ずつ作成
+            for row_idx in range(3):  # 3行分作成 (1-2, 3-4, 5-6)
+                cols_i = st.columns(2)
+                for col_idx in range(2):
+                    i = row_idx * 2 + col_idx + 1  # 艇番計算
+                    with cols_i[col_idx]:
