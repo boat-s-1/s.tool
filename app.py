@@ -13,7 +13,7 @@ import plotly.express as px
 # ==========================================
 st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
 
-# カスタムCSSでデザインをプロ仕様に
+# カスタムCSS
 st.markdown("""
     <style>
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #eee; }
@@ -54,7 +54,6 @@ with st.sidebar:
     race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal=True)
     
     st.divider()
-    # データ読み込みボタン
     target_sheet = f"{r_place}_{race_type_val}統計"
     if st.button("🔄 スプレッドシートを取得", use_container_width=True, type="primary"):
         with st.spinner("通信中..."):
@@ -82,7 +81,6 @@ with tab_analytica:
         st.subheader("🤖 最適配点の算出")
         if "base_df" in st.session_state:
             if st.button("📈 過去の実績から重みを計算", use_container_width=True):
-                # 統計ロジックの実行
                 df_base = st.session_state["base_df"]
                 df_base.columns = [c.strip() for c in df_base.columns]
                 target_cols = ["展示", "直線", "回り足", "一周", "ST"]
@@ -105,27 +103,53 @@ with tab_analytica:
                             corrs[col] = 0.01
                     total = sum(corrs.values())
                     st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-                    st.success(f"✅ {r_place}の解析が完了しました")
-                else:
-                    st.session_state["auto_weights"] = {k: 0.2 for k in target_cols}
-                    st.warning("⚠️ データ不足のため均等配分しました")
+                    st.success(f"✅ 解析完了")
             
             if "auto_weights" in st.session_state:
                 aw = st.session_state["auto_weights"]
-                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=0.4, title=f"📊 {r_place}の重要度比率")
-                fig.update_traces(textposition='inside', textinfo='percent+label')
+                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=0.4)
                 st.plotly_chart(fig, use_container_width=True)
         else:
             st.info("サイドバーからデータを読み込んでください")
 
     # --- 右側：当日予想入力エリア ---
     with col_r:
-        st.subheader("📝 直前気気配入力")
+        st.subheader("📝 直前気配入力")
         with st.form("input_form"):
             results = []
-            # 艇番が1,2,3,4,5,6の順に並ぶよう、ループ内で2列ずつ作成
-            for row_idx in range(3):  # 3行分作成 (1-2, 3-4, 5-6)
-                cols_i = st.columns(2)
+            # 1-2, 3-4, 5-6の順で表示されるよう2列構成を3回繰り返す
+            for row_idx in range(3):
+                row_cols = st.columns(2)
                 for col_idx in range(2):
-                    i = row_idx * 2 + col_idx + 1  # 艇番計算
-                    with cols_i[col_idx]:
+                    boat_num = row_idx * 2 + col_idx + 1
+                    with row_cols[col_idx]:
+                        st.markdown(f'<div class="boat-box" style="background:{boat_bg[boat_num]}; color:{boat_tx[boat_num]};">{boat_num}号艇</div>', unsafe_allow_html=True)
+                        m = st.select_slider(f"モーター_{boat_num}", range(7), 3, get_symbol, key=f"m_{boat_num}")
+                        t = st.select_slider(f"当地勝率_{boat_num}", range(7), 3, get_symbol, key=f"t_{boat_num}")
+                        w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
+                        s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
+                        
+                        score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
+                        results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
+
+            submitted = st.form_submit_button("🔥 解析確定", use_container_width=True, type="primary")
+
+        if submitted:
+            df = pd.DataFrame(results)
+            if df["score"].sum() > 0:
+                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
+                st.session_state["analytica_result"] = df
+                st.success("解析完了！")
+                
+                disp = df.copy()
+                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
+                    disp[c] = disp[c].apply(get_symbol)
+                disp["艇番"] = disp["艇番"].apply(lambda x: f"{int(x)}号艇")
+                st.dataframe(disp[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
+
+with tab_sns:
+    st.subheader("🖼️ 画像生成")
+    if "analytica_result" in st.session_state:
+        st.info("SNS用の画像を準備します。")
+    else:
+        st.warning("先に「当日予想」を確定させてください。")
