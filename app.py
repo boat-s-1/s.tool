@@ -162,4 +162,12 @@ with tab_analytica:
 
 with tab_sns:
     if "analytica_result" in st.session_state:
-        if st.button("✨ 専門紙画像を
+        if st.button("✨ 専門紙画像を生成", use_container_width=True):
+            img = create_perfect_newspaper(r_place, r_num, st.session_state["analytica_result"])
+            if img:
+                st.image(img, use_container_width=True)
+                buf = io.BytesIO()
+                img.save(buf, format="PNG")
+                st.download_button("📲 保存", buf.getvalue(), f"yoso_{r_place}.png", "image/png", use_container_width=True)
+    else:
+        st.warning("予想入力タブで確定させてください")
