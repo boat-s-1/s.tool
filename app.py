@@ -12,15 +12,15 @@ import streamlit.components.v1 as components
 # ==========================================
 st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
 
-# 会場別特性補正値（サンプル数データを追加）
+# 会場別特性補正値（イン逃げ率を追加）
 PLACE_CORRECTIONS = {
-    "桐生": {"展示": 0.2, "直線": 0.2, "回り足": 0.3, "一周": 0.3, "サンプル数": 1450},
-    "戸田": {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2, "サンプル数": 1280},
-    "江戸川": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2, "サンプル数": 980},
-    "福岡": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2, "サンプル数": 1100},
-    "住之江": {"展示": 0.4, "直線": 0.1, "回り足": 0.3, "一周": 0.2, "サンプル数": 1560},
-    "大村": {"展示": 0.5, "直線": 0.1, "回り足": 0.2, "一周": 0.2, "サンプル数": 1800},
-    "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25, "サンプル数": 5000}
+    "桐生": {"展示": 0.2, "直線": 0.2, "回り足": 0.3, "一周": 0.3, "サンプル数": 1450, "イン逃げ率": 52.4},
+    "戸田": {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2, "サンプル数": 1280, "イン逃げ率": 43.8},
+    "江戸川": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2, "サンプル数": 980, "イン逃げ率": 45.2},
+    "福岡": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2, "サンプル数": 1100, "イン逃げ率": 53.1},
+    "住之江": {"展示": 0.4, "直線": 0.1, "回り足": 0.3, "一周": 0.2, "サンプル数": 1560, "イン逃げ率": 58.9},
+    "大村": {"展示": 0.5, "直線": 0.1, "回り足": 0.2, "一周": 0.2, "サンプル数": 1800, "イン逃げ率": 68.5},
+    "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25, "サンプル数": 5000, "イン逃げ率": 50.0}
 }
 
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
@@ -102,18 +102,28 @@ with tab2:
     
     # 会場データの取得
     c_data = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-    # グラフ描画用の辞書（サンプル数を除外して作成）
-    plot_data = {k: v for k, v in c_data.items() if k != "サンプル数"}
+    # グラフ描画用（統計データを除外）
+    plot_data = {k: v for k, v in c_data.items() if k not in ["サンプル数", "イン逃げ率"]}
     
+    # グラフ表示
     st.markdown(f"##### {r_place}の会場別補正ウェイト")
     fig = px.bar(x=list(plot_data.keys()), y=list(plot_data.values()), color=list(plot_data.keys()), 
                  labels={'x':'項目', 'y':'重要度'}, color_discrete_sequence=px.colors.qualitative.Pastel)
     fig.update_layout(showlegend=False, height=250, margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig, use_container_width=True)
     
-    # 📊 ここで参照データ数を表示
-    sample_count = c_data.get("サンプル数", 0)
-    st.caption(f"💡 参照データ：直近 {sample_count:,} レースの統計に基づき算出")
+    # 📊 統計情報（イン逃げ率とサンプル数）を横並びで表示
+    stat_col1, stat_col2 = st.columns(2)
+    with stat_col1:
+        in_nige = c_data.get("イン逃げ率", 0)
+        # イン逃げ率によって色を変える演出
+        nige_color = "red" if in_nige > 60 else "blue" if in_nige < 45 else "black"
+        st.markdown(f"🚩 **イン逃げ率: <span style='color:{nige_color}; font-size:1.2rem;'>{in_nige}%</span>**", unsafe_allow_html=True)
+    with stat_col2:
+        sample_count = c_data.get("サンプル数", 0)
+        st.caption(f"💡 参照: 直近 {sample_count:,} レース")
+
+    
 
     with st.form("live_form"):
         live_raw = []
@@ -129,7 +139,6 @@ with tab2:
                         f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
                         f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
                         
-                        # 補正値計算（サンプル数を除いたキーで計算）
                         live_score = (f1 * c_data["展示"] + f2 * c_data["直線"] + f3 * c_data["回り足"] + f4 * c_data["一周"])
                         live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
         
