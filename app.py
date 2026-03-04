@@ -8,7 +8,6 @@ import os
 import urllib.request
 import gspread
 from google.oauth2.service_account import Credentials
-import plotly.express as px
 
 # ==========================================
 # 1. 基本設定・認証
@@ -107,64 +106,80 @@ with st.sidebar:
     r_num = st.number_input("🏁 レース番号", 1, 12, 1)
     race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal=True)
     st.divider()
-    w_m = st.slider("モーター", 0, 100, 30, step=10)
-    w_t = st.slider("当地勝率", 0, 100, 20, step=10)
-    w_w = st.slider("枠番勝率", 0, 100, 30, step=10)
-    w_s = st.slider("スタート", 0, 100, 20, step=10)
     
-    if st.button("🔄 統計データ取得", use_container_width=True):
+    if st.button("🔄 統計データ取得", use_container_width=True, type="primary"):
         try:
             creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
             gc = gspread.authorize(creds)
             sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
             ws = sh.worksheet(f"{r_place}_{race_type_val}統計")
-            st.session_state["base_df"] = pd.DataFrame(ws.get_all_records())
-            st.success("取得完了")
+            df_raw = pd.DataFrame(ws.get_all_records())
+            
+            # 列名を boat_num に統一する処理
+            if not df_raw.empty:
+                df_raw.columns = ["boat_num"] + list(df_raw.columns[1:])
+                st.session_state["base_df"] = df_raw
+                st.success("データ取得完了")
         except Exception as e:
-            st.error(f"エラー: {e}")
+            st.error(f"連携エラー: {e}")
 
 st.title(f"📰 競艇専門紙 Analytica - {r_place}")
 tab_analytica, tab_sns = st.tabs(["🔍 解析・予想入力", "📰 予想紙画像生成"])
 
 with tab_analytica:
     col_l, col_r = st.columns([1, 1.5])
+    
     with col_l:
+        st.subheader("🤖 統計データ確認")
         if "base_df" in st.session_state:
-            st.subheader("🤖 統計分析結果")
-            st.plotly_chart(px.pie(names=["モーター", "当地", "枠番", "ST"], values=[w_m, w_t, w_w, w_s], hole=0.4), use_container_width=True)
+            # 統計テーブルの表示
+            st.dataframe(st.session_state["base_df"], hide_index=True, use_container_width=True)
         else:
-            st.info("サイドバーからデータを取得してください")
+            st.info("サイドバーの「🔄 統計データ取得」ボタンを押すと、ここにスプレッドシートのデータが表示されます。")
 
     with col_r:
         st.subheader("📝 本日の気配評価")
         with st.form("input_form"):
-            results = []
-            # 艇ごとにアコーディオンを作成
+            user_evals = []
             for i in range(1, 7):
-                bg = {1: "#ffffff", 2: "#333333", 3: "#ff3b3b", 4: "#007bff", 5: "#ffc107", 6: "#28a745"}[i]
-                tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}[i]
-                
-                # ここで st.expander (アコーディオン) を使用
                 with st.expander(f"🚤 {i}号艇 の気配を入力", expanded=(i==1)):
-                    st.markdown(f'<div style="background:{bg}; color:{tx}; padding:8px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:10px;">{i}号艇</div>', unsafe_allow_html=True)
                     m = st.select_slider(f"モーター気配_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
                     t = st.select_slider(f"当地気配_{i}", range(7), 3, get_yoso_mark, key=f"t_{i}")
                     w = st.select_slider(f"枠番気配_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
                     s = st.select_slider(f"直前ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
-                    
-                    score = (m * w_m/100 + t * w_t/100 + w * w_w/100 + s * w_s/100)
-                    results.append({"boat_num": i, "score": score, "m": m, "t": t, "w": w, "s": s})
+                    user_evals.append({"boat_num": i, "u_m": m, "u_t": t, "u_w": w, "u_s": s})
             
-            st.divider()
-            submitted = st.form_submit_button("🔥 予想を確定して解析を実行", use_container_width=True, type="primary")
+            submitted = st.form_submit_button("🔥 統計×直感 で解析を実行", use_container_width=True, type="primary")
 
         if submitted:
-            df = pd.DataFrame(results)
-            # 全体のスコアが0の場合の対策
-            total_score = df["score"].sum()
-            df["expected_pct"] = (df["score"] / total_score * 100).round(1) if total_score > 0 else 0
-            st.session_state["analytica_result"] = df
-            st.success("解析完了！「予想紙画像生成」タブを開いてください。")
+            u_df = pd.DataFrame(user_evals)
+            
+            # 統計データがある場合はマージ、ない場合は直感のみ
+            if "base_df" in st.session_state:
+                b_df = st.session_state["base_df"].copy()
+                b_df["boat_num"] = b_df["boat_num"].astype(int)
+                m_df = pd.merge(u_df, b_df, on="boat_num", how="left").fillna(3)
+                
+                # スライダーをなくしたため、均等配分（各25%）または統計値との単純合算で計算
+                # ここでは 統計値 + 直感値 の合計をスコア化しています
+                m_df["score"] = (
+                    (m_df["u_m"] + m_df.iloc[:, 5]) + 
+                    (m_df["u_t"] + m_df.iloc[:, 6]) + 
+                    (m_df["u_w"] + m_df.iloc[:, 7]) + 
+                    (m_df["u_s"] + m_df.iloc[:, 8])
+                )
+                final_df = m_df[["boat_num", "score"]]
+            else:
+                u_df["score"] = u_df["u_m"] + u_df["u_t"] + u_df["u_w"] + u_df["u_s"]
+                final_df = u_df[["boat_num", "score"]]
+
+            # スコアからパーセント算出
+            total_score = final_df["score"].sum()
+            final_df["expected_pct"] = (final_df["score"] / total_score * 100).round(1) if total_score > 0 else 0
+            
+            st.session_state["analytica_result"] = final_df
+            st.success("解析が完了しました！")
+            st.table(final_df)
 
 with tab_sns:
     if "analytica_result" in st.session_state:
@@ -176,4 +191,4 @@ with tab_sns:
                 img.save(buf, format="PNG")
                 st.download_button("📲 画像を保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
     else:
-        st.warning("「解析・予想入力」タブで【🔥 予想を確定】ボタンを押してください。")
+        st.warning("「解析・予想入力」タブで解析を完了させてください。")
