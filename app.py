@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageFilter
 import io
 import datetime
 import gspread
@@ -9,7 +9,7 @@ from google.oauth2.service_account import Credentials
 import plotly.express as px
 
 # ==========================================
-# 1. 基本設定・認証
+# 1. 基本設定・認証 (変更なし)
 # ==========================================
 st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
 
@@ -36,15 +36,14 @@ except Exception as e:
     st.error(f"⚠️ Google Sheets接続エラー: {e}")
     st.stop()
 
-# ==========================================
-# 2. 便利関数
-# ==========================================
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
-boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
+
+# 艇の色設定 (デザイン用に少し鮮やかに変更)
+boat_bg = {1: "#ffffff", 2: "#111111", 3: "#ff3b3b", 4: "#007bff", 5: "#ffc107", 6: "#28a745"}
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
 
 # ==========================================
-# 3. サイドバー
+# 3. サイドバー (変更なし)
 # ==========================================
 with st.sidebar:
     st.title("🎯 設定パネル")
@@ -62,7 +61,7 @@ with st.sidebar:
                 st.session_state["base_df"] = pd.DataFrame(data)
                 st.success(f"✅ {len(data)}件 取得完了")
             except:
-                st.error(f"「{target_sheet}」が見つかりませんでした。")
+                st.error(f"「{target_sheet}」が見つかりません。")
 
     st.divider()
 
@@ -77,7 +76,7 @@ with st.sidebar:
         st.error(f"合計が {total_w}% です。100%に調整してください。")
 
 # ==========================================
-# 4. メイン画面
+# 4. メイン画面 (当日予想タブまでは変更なし)
 # ==========================================
 st.title(f"📊 {r_place} Pro Analytica")
 
@@ -145,76 +144,130 @@ with tab_analytica:
                 st.error("配点設定の合計を100%にしてください")
             else:
                 df = pd.DataFrame(results)
-                # エラー回避のため変数名から「％」を削除
                 df["expected_pct"] = (df["score"] / df["score"].sum() * 100).round(1) if df["score"].sum() > 0 else 0
                 st.session_state["analytica_result"] = df
                 st.success("解析完了！")
                 
                 disp = df.copy()
                 disp["艇番"] = disp["boat_num"].apply(lambda x: f"{x}号艇")
-                # 表示用シンボル変換
                 for c, name in zip(["m", "t", "w", "s"], ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]):
                     disp[name] = disp[c].apply(get_symbol)
                 
-                st.dataframe(disp[["艇番", "expected_pct", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
+                st.dataframe(disp[["艇番", "expected_pct", "モーター", "當地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
 
 # ==========================================
-# 5. SNS画像生成タブ
+# 5. SNS画像生成タブ (美デザイン版へパッチ適用)
 # ==========================================
 with tab_sns:
-    st.subheader("🖼️ SNS用画像作成")
+    st.subheader("🖼️ Premium 画像作成")
+    st.caption("SNSで映える、プロ仕様のデザイン画像を生成します、")
     
     if "analytica_result" in st.session_state:
         df = st.session_state["analytica_result"]
         
-        # 1. 画像キャンバス作成
-        img_w, img_h = 1000, 1000
-        img = Image.new('RGB', (img_w, img_h), (20, 20, 30))
-        draw = ImageDraw.Draw(img)
-        
-        # フォントの読み込み
-        def get_font(size):
+        # --- 描画関数 ---
+        def create_premium_image(place_name, sorted_df):
+            # 1. キャンバス & 色設定
+            img_w, img_h = 1080, 1350 # インスタ等で見やすい縦長
+            bg_color = (10, 10, 15) # 漆黒
+            accent_neon = (255, 60, 60) # ネオンレッド
+            grid_color = (40, 40, 50) # 深い灰色
+            
+            img = Image.new('RGB', (img_w, img_h), bg_color)
+            draw = ImageDraw.Draw(img)
+            
+            # 2. フォント読込
             try:
-                # Streamlit Cloudの標準フォントパスを試行
-                return ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", size)
+                # liberation fonts (linux / cloud)
+                f_title = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 65)
+                f_pct = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 75)
+                f_num = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 100)
+                f_sub = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 35)
             except:
-                return ImageFont.load_default()
+                f_title = f_pct = f_num = ImageFont.load_default()
+                f_sub = ImageFont.load_default()
 
-        f_title = get_font(60)
-        f_main = get_font(40)
+            # 3. 背景アートワーク (グリッド & グラデーション)
+            for y in range(0, img_h, 80): draw.line((0, y, img_w, y), fill=grid_color, width=1)
+            for x in range(0, img_w, 80): draw.line((x, 0, x, img_h), fill=grid_color, width=1)
+            
+            # トップの赤いグラデーションぼかし
+            grad_layer = Image.new('RGBA', (img_w, img_h), (0,0,0,0))
+            draw_grad = ImageDraw.Draw(grad_layer)
+            draw_grad.rectangle([0,0, img_w, 200], fill=(255, 60, 60, 40))
+            grad_layer = grad_layer.filter(ImageFilter.GaussianBlur(50))
+            img.paste(grad_layer, (0,0), grad_layer)
 
-        # ヘッダー描画
-        draw.text((50, 50), f"PRO ANALYTICA: {r_place}", fill=(255, 255, 255), font=f_title)
-        draw.line((50, 130, 950, 130), fill=(255, 75, 75), width=5)
-        
-        # スコア順に描画
+            # 4. ヘッダー
+            today_str = datetime.date.today().strftime("%Y.%m.%d")
+            draw.text((60, 70), f"PRO ANALYTICA", fill=accent_neon, font=f_title)
+            draw.text((60, 150), f"🏟️ {place_name} | {today_str}", fill=(180, 180, 200), font=f_sub)
+            
+            # メインライン
+            draw.line((60, 220, 1020, 220), fill=accent_neon, width=6)
+            
+            # 5. ランキング描画
+            for i, row in enumerate(sorted_df.itertuples()):
+                y = 280 + (i * 170)
+                b_num = int(row.boat_num)
+                b_pct = row.expected_pct
+                b_color_str = boat_bg[b_num]
+                # RGB変換
+                b_rgb = tuple(int(b_color_str.lstrip('#')[j:j+2], 16) for j in (0, 2, 4))
+                
+                # --- (1) 艇番ボックス (立体的な光沢仕上げ) ---
+                # ネオンゴースト (背後のぼかした光)
+                neon_g = Image.new('RGBA', (200, 200), (0,0,0,0))
+                draw_g = ImageDraw.Draw(neon_g)
+                draw_g.rounded_rectangle([30, 30, 170, 170], radius=30, fill=(*b_rgb, 80))
+                neon_g = neon_g.filter(ImageFilter.GaussianBlur(25))
+                img.paste(neon_g, (30, y-30), neon_g)
+                
+                # 本体ボックス (金属的なグラデーション風)
+                draw.rounded_rectangle([60, y, 180, y + 120], radius=20, fill=b_rgb)
+                # 艇番
+                draw.text((88, y + 15), str(b_num), fill=boat_tx[b_num], font=f_num)
+
+                # --- (2) パーセント & バー ---
+                bar_start_x = 220
+                draw.text((bar_start_x, y), f"EXPECTED PROBABILITY", fill=(150, 150, 170), font=f_sub)
+                
+                # バーの背景
+                draw.rounded_rectangle([bar_start_x, y+60, 950, y+100], radius=15, fill=(30, 30, 40))
+                
+                # バー (ネオンレッド〜オレンジのグラデーション)
+                # ※ここではPILでグラデは難しいため、2色のバーを重ねることで表現
+                bar_w = int(b_pct * 7.7) # 最大770px
+                if bar_w > 10:
+                    draw.rounded_rectangle([bar_start_x, y+60, bar_start_x + bar_w, y+100], radius=15, fill=accent_neon)
+                    # 先端を少し明るく
+                    draw.rounded_rectangle([bar_start_x + bar_w - 10, y+60, bar_start_x + bar_w, y+100], radius=15, fill=(255, 120, 120))
+                
+                # パーセント数字 (右寄せ)
+                draw.text(( bar_start_x + 560, y-10), f"{b_pct}%", fill=(255, 255, 255), font=f_pct)
+
+            # 6. フッター
+            draw.text((60, 1270), "Generated by Pro Analytica ©AI Prediction System", fill=(80, 80, 100), font=f_sub)
+            
+            return img
+
+        # --- アプリ上の表示 ---
         sorted_df = df.sort_values("expected_pct", ascending=False)
-        for i, row in enumerate(sorted_df.itertuples()):
-            y = 180 + (i * 130)
-            b_num = int(row.boat_num)
-            b_pct = row.expected_pct
-            
-            # 艇番ボックス
-            draw.rectangle([50, y, 150, y + 100], fill=boat_bg[b_num], outline=(255, 255, 255))
-            draw.text((82, y + 18), str(b_num), fill=boat_tx[b_num], font=f_title)
-            
-            # パーセントバー
-            bar_w = int(b_pct * 6)
-            draw.rectangle([180, y + 60, 180 + bar_w, y + 90], fill=(255, 75, 75))
-            draw.text((180, y + 5), f"{b_pct}% EXPECTED", fill=(200, 200, 200), font=f_main)
-
+        
         # プレビュー表示
-        st.image(img, use_container_width=True)
+        img_preview = create_premium_image(r_place, sorted_df)
+        st.image(img_preview, caption=f"✨ {r_place} Premium Yoso", use_container_width=True)
         
         # ダウンロード
         buf = io.BytesIO()
-        img.save(buf, format="PNG")
+        img_preview.save(buf, format="PNG")
         st.download_button(
-            label="📲 画像をダウンロード",
+            label="📲 Premium画像を保存",
             data=buf.getvalue(),
-            file_name=f"Analytica_{r_place}.png",
+            file_name=f"Premium_{r_place}_{datetime.datetime.now().strftime('%m%d_%H%M')}.png",
             mime="image/png",
             use_container_width=True
         )
+        
     else:
         st.warning("先に「当日予想」タブで解析を確定させてください。")
