@@ -137,7 +137,7 @@ with tab_analytica:
                             w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
                             s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
                             score = (m * (w_m/100) + t * (w_t/100) + w * (w_w/100) + s * (w_s/100))
-                            results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
+                            results.append({"boat_num": boat_num, "score": score, "m": m, "t": t, "w": w, "s": s})
             submitted = st.form_submit_button("🔥 解析確定", use_container_width=True, type="primary")
 
         if submitted:
@@ -145,16 +145,21 @@ with tab_analytica:
                 st.error("配点設定の合計を100%にしてください")
             else:
                 df = pd.DataFrame(results)
-                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1) if df["score"].sum() > 0 else 0
+                # エラー回避のため変数名から「％」を削除
+                df["expected_pct"] = (df["score"] / df["score"].sum() * 100).round(1) if df["score"].sum() > 0 else 0
                 st.session_state["analytica_result"] = df
                 st.success("解析完了！")
+                
                 disp = df.copy()
-                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
-                    disp[c] = disp[c].apply(get_symbol)
-                st.dataframe(disp[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
+                disp["艇番"] = disp["boat_num"].apply(lambda x: f"{x}号艇")
+                # 表示用シンボル変換
+                for c, name in zip(["m", "t", "w", "s"], ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]):
+                    disp[name] = disp[c].apply(get_symbol)
+                
+                st.dataframe(disp[["艇番", "expected_pct", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
 
 # ==========================================
-# 5. SNS画像生成タブ (ここを実装しました)
+# 5. SNS画像生成タブ
 # ==========================================
 with tab_sns:
     st.subheader("🖼️ SNS用画像作成")
@@ -162,54 +167,52 @@ with tab_sns:
     if "analytica_result" in st.session_state:
         df = st.session_state["analytica_result"]
         
-        # 1. 画像設定
+        # 1. 画像キャンバス作成
         img_w, img_h = 1000, 1000
-        base_color = (20, 20, 30) # 濃い紺色
-        accent_color = (255, 75, 75) # 赤
-        
-        # 2. 画像キャンバス作成
-        img = Image.new('RGB', (img_w, img_h), base_color)
+        img = Image.new('RGB', (img_w, img_h), (20, 20, 30))
         draw = ImageDraw.Draw(img)
         
-        # ※フォント設定（環境によってパスが異なるため、デフォルトを使用）
-        try:
-            # Linux(Streamlit Cloud)環境用
-            font_title = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", 60)
-            font_main = ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf", 40)
-        except:
-            font_title = ImageFont.load_default()
-            font_main = ImageFont.load_default()
+        # フォントの読み込み
+        def get_font(size):
+            try:
+                # Streamlit Cloudの標準フォントパスを試行
+                return ImageFont.truetype("/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf", size)
+            except:
+                return ImageFont.load_default()
 
-        # タイトル描画
-        draw.text((50, 50), f"PRO ANALYTICA: {r_place}", fill=(255, 255, 255), font=font_title)
-        draw.line((50, 130, 950, 130), fill=accent_color, width=5)
+        f_title = get_font(60)
+        f_main = get_font(40)
+
+        # ヘッダー描画
+        draw.text((50, 50), f"PRO ANALYTICA: {r_place}", fill=(255, 255, 255), font=f_title)
+        draw.line((50, 130, 950, 130), fill=(255, 75, 75), width=5)
         
-        # 各艇のスコアを描画
-        sorted_df = df.sort_values("予想％", ascending=False)
+        # スコア順に描画
+        sorted_df = df.sort_values("expected_pct", ascending=False)
         for i, row in enumerate(sorted_df.itertuples()):
-            y_pos = 180 + (i * 130)
-            b_num = int(row.艇番)
-            b_pct = row.予想％
+            y = 180 + (i * 130)
+            b_num = int(row.boat_num)
+            b_pct = row.expected_pct
             
             # 艇番ボックス
-            draw.rectangle([50, y_pos, 150, y_pos + 100], fill=boat_bg[b_num], outline=(255,255,255))
-            draw.text((85, y_pos + 20), str(b_num), fill=boat_tx[b_num], font=font_title)
+            draw.rectangle([50, y, 150, y + 100], fill=boat_bg[b_num], outline=(255, 255, 255))
+            draw.text((82, y + 18), str(b_num), fill=boat_tx[b_num], font=f_title)
             
             # パーセントバー
-            bar_width = int(b_pct * 6) # 最大600px
-            draw.rectangle([180, y_pos + 60, 180 + bar_width, y_pos + 90], fill=accent_color)
-            draw.text((180, y_pos + 5), f"{b_pct}% EXPECTED", fill=(200, 200, 200), font=font_main)
+            bar_w = int(b_pct * 6)
+            draw.rectangle([180, y + 60, 180 + bar_w, y + 90], fill=(255, 75, 75))
+            draw.text((180, y + 5), f"{b_pct}% EXPECTED", fill=(200, 200, 200), font=f_main)
 
-        # 3. プレビューと保存
-        st.image(img, caption="生成されたプレビュー", use_container_width=True)
+        # プレビュー表示
+        st.image(img, use_container_width=True)
         
-        # ダウンロードボタン
+        # ダウンロード
         buf = io.BytesIO()
         img.save(buf, format="PNG")
         st.download_button(
             label="📲 画像をダウンロード",
             data=buf.getvalue(),
-            file_name=f"Analytica_{r_place}_{datetime.datetime.now().strftime('%m%d_%H%M')}.png",
+            file_name=f"Analytica_{r_place}.png",
             mime="image/png",
             use_container_width=True
         )
