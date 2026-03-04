@@ -47,7 +47,7 @@ boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419",
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
 
 # ==========================================
-# 3. サイドバー (構成変更済み)
+# 3. サイドバー
 # ==========================================
 with st.sidebar:
     st.title("🎯 設定パネル")
@@ -72,15 +72,15 @@ with st.sidebar:
             except Exception as e:
                 st.error(f"「{target_sheet}」が見つかりませんでした。")
 
-    st.divider() # --------------- 区切り線
+    st.divider()
 
-    # 4. 配点設定
+    # 4. 配点設定 (step=10 を追加)
     st.markdown("### ⚙️ 配点設定")
-    st.caption("計算の重みを調整（合計100%）")
-    w_m = st.slider("モーターの重み", 0, 100, 25)
-    w_t = st.slider("当地勝率の重み", 0, 100, 20)
-    w_w = st.slider("枠番勝率の重み", 0, 100, 30)
-    w_s = st.slider("スタートの重み", 0, 100, 25)
+    st.caption("各項目を10単位で調整（合計100%）")
+    w_m = st.slider("モーターの重み", 0, 100, 30, step=10)
+    w_t = st.slider("当地勝率の重み", 0, 100, 20, step=10)
+    w_w = st.slider("枠番勝率の重み", 0, 100, 30, step=10)
+    w_s = st.slider("スタートの重み", 0, 100, 20, step=10)
     
     total_w = w_m + w_t + w_w + w_s
     if total_w != 100:
@@ -89,8 +89,6 @@ with st.sidebar:
 # ==========================================
 # 4. メイン画面
 # ==========================================
-# レース番号は不要とのことでしたが、メイン画面のタイトル等で識別が必要な場合を考慮し
-# ここでは一旦「Pro Analytica」のみにしていますが、必要なら再配置可能です。
 st.title(f"📊 {r_place} Pro Analytica")
 
 tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ SNS画像生成"])
