@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
+from PIL import Image, ImageDraw, ImageFont, ImageOps
 import io
 import datetime
 import os
@@ -28,35 +28,46 @@ def get_japanese_font():
     return font_path
 
 # ==========================================
-# 2. 画像生成エンジン（変更なし）
+# 2. 進化した画像生成エンジン（テーマ対応）
 # ==========================================
-def create_perfect_newspaper(place, race_num, result_df):
+def create_styled_newspaper(place, race_num, result_df, theme="伝統", editor_name="本紙予想"):
     w, h = 1300, 1100 
-    paper_color = (245, 242, 230) 
-    img = Image.new('RGB', (w, h), paper_color)
+    
+    # テーマ別カラー設定
+    themes = {
+        "伝統": {"bg": (245, 242, 230), "line": (0, 0, 0), "title": (180, 0, 0), "text": (0, 0, 0)},
+        "サイバー": {"bg": (10, 20, 30), "line": (0, 243, 255), "title": (0, 243, 255), "text": (255, 255, 255)},
+        "ラグジュアリー": {"bg": (26, 26, 46), "line": (212, 175, 55), "title": (212, 175, 55), "text": (255, 255, 255)}
+    }
+    cfg = themes.get(theme, themes["伝統"])
+    
+    img = Image.new('RGB', (w, h), cfg["bg"])
     draw = ImageDraw.Draw(img)
     font_p = get_japanese_font()
     if not font_p: return None
 
+    # フォント設定
     f_header = ImageFont.truetype(font_p, 45)
     f_title = ImageFont.truetype(font_p, 90)
-    f_mark = ImageFont.truetype(font_p, 110)
+    f_mark = ImageFont.truetype(font_p, 115)
     f_label = ImageFont.truetype(font_p, 38)
     f_boat = ImageFont.truetype(font_p, 65)
-    f_index = ImageFont.truetype(font_p, 42)
+    f_index = ImageFont.truetype(font_p, 45)
     f_footer = ImageFont.truetype(font_p, 48)
+    f_stamp = ImageFont.truetype(font_p, 30)
 
-    draw.rectangle([30, 30, w-30, h-30], outline=(0, 0, 0), width=6)
-    draw.line([30, 160, w-30, 160], fill=(0, 0, 0), width=4)
-    draw.text((60, 65), "競艇専門紙 PRO ANALYTICA", fill=(0, 0, 0), font=f_header)
-    draw.text((w-320, 65), f"{datetime.date.today().strftime('%Y/%m/%d')}", fill=(0, 0, 0), font=f_header)
-    draw.text((60, 190), f"{place}ボート 最終結論 第{race_num}R", fill=(180, 0, 0), font=f_title)
+    # 枠線とヘッダー
+    draw.rectangle([30, 30, w-30, h-30], outline=cfg["line"], width=6)
+    draw.line([30, 160, w-30, 160], fill=cfg["line"], width=4)
+    draw.text((60, 65), f"競艇専門紙 PRO ANALYTICA [{theme}]", fill=cfg["text"], font=f_header)
+    draw.text((w-320, 65), f"{datetime.date.today().strftime('%Y/%m/%d')}", fill=cfg["text"], font=f_header)
+    draw.text((60, 190), f"{place}ボート 最終結論 第{race_num}R", fill=cfg["title"], font=f_title)
     
-    start_x, first_col_x, col_w, row_y_base = 80, 240, 170, 320
-    draw.text((start_x, row_y_base + 60), "本 紙\n予 想", fill=(50, 50, 50), font=f_label, spacing=10)
-    draw.text((start_x, row_y_base + 290), "艇 番", fill=(50, 50, 50), font=f_label)
-    draw.text((start_x, row_y_base + 515), "指 数", fill=(50, 50, 50), font=f_label)
-    draw.line([30, row_y_base, w-30, row_y_base], fill=(0,0,0), width=3)
+    start_x, first_col_x, col_w, row_y_base = 80, 240, 175, 320
+    draw.text((start_x, row_y_base + 60), "本 紙\n予 想", fill=cfg["text"], font=f_label, spacing=10)
+    draw.text((start_x, row_y_base + 290), "艇 番", fill=cfg["text"], font=f_label)
+    draw.text((start_x, row_y_base + 515), "指 数", fill=cfg["text"], font=f_label)
+    draw.line([30, row_y_base, w-30, row_y_base], fill=cfg["line"], width=3)
 
     temp_df = result_df.copy()
     temp_df["rank"] = temp_df["expected_pct"].rank(ascending=False, method='min')
@@ -70,24 +81,40 @@ def create_perfect_newspaper(place, race_num, result_df):
         if target_rows.empty: continue
         row = target_rows.iloc[0]
         
-        line_x = first_col_x + (i-1) * col_w
-        draw.line([line_x, row_y_base, line_x, row_y_base + 630], fill=(0,0,0), width=2)
+        draw.line([first_col_x + (i-1) * col_w, row_y_base, first_col_x + (i-1) * col_w, row_y_base + 630], fill=cfg["line"], width=2)
+        
         rank = row["rank"]
         mark = "◎" if rank == 1 else "○" if rank == 2 else "▲" if rank == 3 else "△" if rank == 4 else "・"
+        m_col = cfg["title"] if rank == 1 else cfg["text"]
         m_w = f_mark.getlength(mark)
-        draw.text((curr_x_center - m_w//2, row_y_base + 40), mark, fill=(200, 0, 0), font=f_mark)
+        draw.text((curr_x_center - m_w//2, row_y_base + 40), mark, fill=m_col, font=f_mark)
+        
+        # 艇番
         b_rgb = tuple(int(boat_bg[i].lstrip('#')[j:j+2], 16) for j in (0, 2, 4))
-        draw.ellipse([curr_x_center - 65, row_y_base + 260, curr_x_center + 65, row_y_base + 390], fill=b_rgb, outline=(0,0,0), width=3)
+        draw.ellipse([curr_x_center - 65, row_y_base + 260, curr_x_center + 65, row_y_base + 390], fill=b_rgb, outline=cfg["line"], width=3)
         n_w = f_boat.getlength(str(i))
         draw.text((curr_x_center - n_w//2, row_y_base + 278), str(i), fill=boat_tx[i], font=f_boat)
+        
+        # 指数
         idx_str = f"{row['expected_pct']}%"
         idx_w = f_index.getlength(idx_str)
-        draw.text((curr_x_center - idx_w//2, row_y_base + 515), idx_str, fill=(0, 0, 0), font=f_index)
+        draw.text((curr_x_center - idx_w//2, row_y_base + 515), idx_str, fill=cfg["text"], font=f_index)
 
-    draw.rectangle([60, 960, w-60, 1070], fill=(255, 255, 255), outline=(0,0,0), width=3)
+        # 本命スタンプ（◎のみ）
+        if rank == 1:
+            draw.ellipse([curr_x_center + 20, row_y_base + 10, curr_x_center + 90, row_y_base + 80], outline=cfg["title"], width=4)
+            draw.text((curr_x_center + 35, row_y_base + 30), "特選", fill=cfg["title"], font=f_stamp)
+
+    # 買い目とエディター名
+    draw.rectangle([60, 960, w-60, 1070], fill=None, outline=cfg["line"], width=3)
     top_3 = result_df.sort_values("expected_pct", ascending=False)["boat_num"].tolist()[:3]
     recommend_text = f"推奨: {top_3[0]}={top_3[1]}-全, {top_3[0]}-{top_3[2]}-流"
-    draw.text((100, 990), recommend_text, fill=(0, 0, 0), font=f_footer)
+    draw.text((100, 990), recommend_text, fill=cfg["text"], font=f_footer)
+    
+    # 署名
+    sign_w = f_label.getlength(f"監修：{editor_name}")
+    draw.text((w - sign_w - 100, 1000), f"監修：{editor_name}", fill=cfg["line"], font=f_label)
+    
     return img
 
 def get_yoso_mark(val):
@@ -112,55 +139,34 @@ with st.sidebar:
             if not df_raw.empty:
                 df_raw.columns = ["boat_num"] + list(df_raw.columns[1:])
                 st.session_state["base_df"] = df_raw
-                st.success("取得完了")
+                st.success("データ同期完了")
         except Exception as e:
-            st.error(f"エラー: {e}")
+            st.error(f"連携エラー: {e}")
 
 st.title(f"📰 Analytica - {r_place}")
 
-# --- タブ構成の変更 ---
-tab_guide, tab_analytica, tab_sns = st.tabs(["💡 使い方ガイド", "🔍 解析・予想", "📰 予想紙画像"])
+tab_guide, tab_analytica, tab_sns = st.tabs(["💡 攻略ガイド", "🔍 解析・予想", "🎨 画像デザイン"])
 
-# --- 使い方ガイドタブ ---
+# --- 1. 攻略ガイド ---
 with tab_guide:
-    st.markdown("### 🚀 3ステップで最強の予想紙を作成")
-    
+    st.markdown("### 🏆 的中への最短ルート")
+    st.info("このツールは**『過去の統計』**と**『あなたの直感』**を合成し、世界に一つだけの専門紙を作るプロ仕様の解析機です。")
     col1, col2 = st.columns(2)
     with col1:
-        st.info("**① データ取得**\n左のメニューから開催地を選び「統計データ取得」をクリック。過去の膨大なデータが読み込まれます。")
+        st.write("#### ① 統計を味方につける")
+        st.caption("データ取得で『当地勝率』『枠番勝率』を読み込み、基礎指数を算出します。")
     with col2:
-        st.info("**② 直感を入力**\n展示航走や直前の気配を見て、あなたの「目」で感じた評価をスライダーで入力します。")
-    
-    st.success("**③ 画像生成してシェア！**\n解析結果に基づいた本格的な「専門紙画像」が完成。SNSでの共有や保存が可能です。")
+        st.write("#### ② 展示気配を反映")
+        st.caption("ピット離れ、スリット付近の伸び、回り足をスライダーで入力。")
+    st.success("#### ③ 究極の1枚をシェア！\nデザインを選んで画像を保存。SNSで予想を公開しよう。")
 
-    st.markdown("---")
-    st.subheader("💡 的中率アップの秘訣")
-    
-    with st.expander("✅ 評価の付け方のコツ"):
-        st.write("""
-        - **展示（モーター）**: 伸び足が良い艇には迷わず高い評価を。
-        - **当地**: 苦手意識のある選手がいないか、統計データと照らし合わせましょう。
-        - **ST（スタート）**: 今節のタイミングが合っているか直前情報をチェック。
-        """)
-    
-    with st.expander("📊 指数（%）の見方"):
-        st.write("""
-        - **30%超え**: 圧倒的な軸候補です。
-        - **20%前後**: 混戦模様。相手選びが重要になります。
-        - **一桁台**: 穴として一考の価値あり。
-        """)
-        
-    
-    
-    st.caption("※本ツールは統計と主観を融合させるための補助ツールです。舟券の購入は自己責任でお願いします。")
-
-# --- 解析・予想タブ ---
+# --- 2. 解析・予想 ---
 with tab_analytica:
-    st.subheader("📝 本日の評価入力")
+    st.subheader("📝 リアルタイム評価")
     with st.form("input_form"):
         user_evals = []
         for i in range(1, 7):
-            with st.expander(f"🚤 {i}号艇 の気配", expanded=(i==1)):
+            with st.expander(f"🚤 {i}号艇 の評価", expanded=(i==1)):
                 m = st.select_slider(f"展示_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
                 t = st.select_slider(f"当地_{i}", range(7), 3, get_yoso_mark, key=f"t_{i}")
                 w = st.select_slider(f"枠番_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
@@ -174,39 +180,41 @@ with tab_analytica:
             b_df = st.session_state["base_df"].copy()
             b_df["boat_num"] = b_df["boat_num"].astype(int)
             m_df = pd.merge(u_df, b_df, on="boat_num", how="left").fillna(3)
-            
+            # スコア計算
             m_df["disp_val"] = (m_df["u_m"] + m_df.iloc[:, 5])
             m_df["local_val"] = (m_df["u_t"] + m_df.iloc[:, 6])
             m_df["frame_val"] = (m_df["u_w"] + m_df.iloc[:, 7])
             m_df["st_val"] = (m_df["u_s"] + m_df.iloc[:, 8])
             m_df["score"] = m_df["disp_val"] + m_df["local_val"] + m_df["frame_val"] + m_df["st_val"]
             m_df["rank"] = m_df["score"].rank(ascending=False, method='min').astype(int)
-            
             total_score = m_df["score"].sum()
             m_df["expected_pct"] = (m_df["score"] / total_score * 100).round(1) if total_score > 0 else 0
             st.session_state["analytica_result"] = m_df
         else:
-            st.warning("先にサイドバーから統計データを取得してください。")
+            st.warning("左メニューから統計データを取得してください。")
 
-    st.divider()
     if "analytica_result" in st.session_state:
-        st.subheader("📊 解析結果一覧")
+        st.divider()
         res_df = st.session_state["analytica_result"][["boat_num", "disp_val", "local_val", "frame_val", "st_val", "score", "rank"]]
         res_df.columns = ["艇番", "展示", "当地", "枠番", "ST", "スコア", "順位"]
         st.dataframe(res_df.sort_values("順位"), hide_index=True, use_container_width=True)
-        st.success("解析完了！「予想紙画像」タブから保存できます。")
-    else:
-        st.info("上のフォームを入力して解析を実行してください。")
 
-# --- 画像生成タブ ---
+# --- 3. 画像デザイン（パワーアップ！） ---
 with tab_sns:
+    st.subheader("🎨 画像カスタマイズ")
     if "analytica_result" in st.session_state:
-        if st.button("✨ 専門紙画像を生成", use_container_width=True):
-            img = create_perfect_newspaper(r_place, r_num, st.session_state["analytica_result"])
+        col_ui1, col_ui2 = st.columns(2)
+        with col_ui1:
+            theme_choice = st.selectbox("🖼️ デザインテーマ", ["伝統", "サイバー", "ラグジュアリー"])
+        with col_ui2:
+            editor_name = st.text_input("✍️ 予想屋名（監修名）", value="本紙予想")
+        
+        if st.button("✨ 予想紙を生成", use_container_width=True, type="primary"):
+            img = create_styled_newspaper(r_place, r_num, st.session_state["analytica_result"], theme_choice, editor_name)
             if img:
-                st.image(img, use_container_width=True)
+                st.image(img, use_container_width=True, caption=f"デザイン：{theme_choice}")
                 buf = io.BytesIO()
                 img.save(buf, format="PNG")
-                st.download_button("📲 画像を保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
+                st.download_button("📲 画像を保存", buf.getvalue(), f"analytica_{theme_choice}.png", "image/png", use_container_width=True)
     else:
-        st.warning("解析を先に完了させてください。")
+        st.warning("解析タブで解析を完了させてください。")
