@@ -1,161 +1,113 @@
 import streamlit as st
 import pandas as pd
 import numpy as np
-from PIL import Image, ImageDraw, ImageFont
-import io
-import datetime
-import gspread
-from google.oauth2.service_account import Credentials
 import plotly.express as px
 
 # ==========================================
-# 1. 基本設定・認証
+# 1. 基本設定
 # ==========================================
-st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
+st.set_page_config(page_title="競艇Pro Analytica - Simple", layout="wide", page_icon="🎯")
 
-# カスタムCSS
+# デザイン用CSS
 st.markdown("""
     <style>
-    .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #eee; }
-    .boat-box { padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 5px; border: 1px solid #dee2e6; }
-    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
-    .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 5px 5px 0 0; padding: 10px 20px; }
-    .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
-    /* アコーディオン内のマージン調整 */
-    .stExpander { border: none !important; box-shadow: none !important; margin-bottom: 10px !important; }
+    .stMetric { background-color: #ffffff; padding: 10px; border-radius: 10px; border: 1px solid #eee; }
+    .boat-box { padding: 8px; border-radius: 5px; text-align: center; font-weight: bold; margin-bottom: 5px; }
     </style>
 """, unsafe_allow_html=True)
 
-# Google Sheets 認証
-@st.cache_resource
-def get_gspread_client():
-    scopes = ["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"]
-    creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=scopes)
-    return gspread.authorize(creds)
+# 24場リスト
+ALL_PLACES = [
+    "桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", 
+    "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", 
+    "下関", "若松", "芦屋", "福岡", "佐賀", "大村"
+]
 
-try:
-    gc = get_gspread_client()
-except Exception as e:
-    st.error(f"⚠️ Google Sheets接続エラー: {e}")
-    st.stop()
+# 艇の色設定
+def get_boat_style(num):
+    bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
+    tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
+    return f'background-color:{bg[num]}; color:{tx[num]};'
 
-# ==========================================
-# 2. 便利関数
-# ==========================================
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
-boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419", 6: "#2f9e44"}
-boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
 
 # ==========================================
-# 3. サイドバー
+# 2. サイドバー
 # ==========================================
 with st.sidebar:
-    st.title("🎯 設定パネル")
-    r_place = st.selectbox("📍 開催地", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
+    st.title("🎯 Pro Analytica")
+    r_place = st.selectbox("📍 開催地を選択", ALL_PLACES)
     r_num = st.number_input("🏁 レース番号", 1, 12, 1)
-    race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal=True)
     
     st.divider()
-    target_sheet = f"{r_place}_{race_type_val}統計"
-    if st.button("🔄 スプレッドシートを取得", use_container_width=True, type="primary"):
-        with st.spinner("通信中..."):
-            try:
-                sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
-                ws = sh.worksheet(target_sheet)
-                data = ws.get_all_records()
-                st.session_state["base_df"] = pd.DataFrame(data)
-                st.success(f"✅ {len(data)}件 取得完了")
-            except:
-                st.error(f"「{target_sheet}」が見つかりません。")
+    st.markdown("### ⚙️ 配点設定")
+    st.caption("各項目の重要度を調整できます（合計100%）")
+    w_ex = st.slider("展示気配の重み", 0, 100, 40)
+    w_st = st.slider("直線の重み", 0, 100, 20)
+    w_tu = st.slider("旋回の重み", 0, 100, 20)
+    w_all = st.slider("総合の重み", 0, 100, 20)
+    
+    total_w = w_ex + w_st + w_tu + w_all
+    if total_w != 100:
+        st.error(f"合計が {total_w}% です。100%になるよう調整してください。")
 
 # ==========================================
-# 4. メイン画面
+# 3. メインコンテンツ
 # ==========================================
-st.title(f"📊 {r_place} {r_num}R Pro Analytica")
+tab1, tab2 = st.tabs(["🔥 直前解析シミュレーター", "📊 メモ・記録"])
 
-tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ SNS画像生成"])
+with tab1:
+    st.subheader(f"🏟️ {r_place} {r_num}R 解析")
+    
+    # 円グラフ表示
+    weights = {"展示": w_ex, "直線": w_st, "旋回": w_tu, "総合": w_all}
+    fig = px.pie(values=list(weights.values()), names=list(weights.keys()), hole=0.5,
+                 color_discrete_sequence=px.colors.qualitative.Pastel, height=300)
+    fig.update_layout(margin=dict(t=30, b=0, l=0, r=0))
+    st.plotly_chart(fig, use_container_width=True)
 
-with tab_analytica:
-    col_l, col_r = st.columns([1, 1.5])
-
-    # --- 左側：統計解析エリア ---
-    with col_l:
-        st.subheader("🤖 最適配点の算出")
-        if "base_df" in st.session_state:
-            if st.button("📈 過去の実績から重みを計算", use_container_width=True):
-                df_base = st.session_state["base_df"]
-                df_base.columns = [c.strip() for c in df_base.columns]
-                target_cols = ["展示", "直線", "回り足", "一周", "ST"]
-                avail = [c for c in target_cols + ["着順"] if c in df_base.columns]
-                work_df = df_base[avail].copy()
-                if "着順" in work_df.columns:
-                    work_df["着順"] = work_df["着順"].astype(str).str.replace('S', '').replace('NULL', '')
-                for col in work_df.columns:
-                    work_df[col] = pd.to_numeric(work_df[col], errors='coerce')
-                work_df = work_df.fillna(work_df.mean())
-                clean_df = work_df[work_df["着順"] > 0]
+    # 入力フォーム
+    with st.form("input_form"):
+        st.markdown("### 📝 気配入力")
+        input_cols = st.columns(3)
+        live_data = []
+        
+        for i in range(1, 7):
+            with input_cols[(i-1) % 3]:
+                st.markdown(f'<div class="boat-box" style="{get_boat_style(i)}">{i}号艇</div>', unsafe_allow_html=True)
+                f1 = st.select_slider(f"展示_{i}", range(7), 3, get_symbol, key=f"ex_{i}")
+                f2 = st.select_slider(f"直線_{i}", range(7), 3, get_symbol, key=f"st_{i}")
+                f3 = st.select_slider(f"旋回_{i}", range(7), 3, get_symbol, key=f"tu_{i}")
+                f4 = st.select_slider(f"総合_{i}", range(7), 3, get_symbol, key=f"all_{i}")
                 
-                if len(clean_df) >= 2:
-                    corrs = {}
-                    for col in target_cols:
-                        if col in clean_df.columns:
-                            val = abs(clean_df[col].corr(clean_df["着順"]))
-                            corrs[col] = val if pd.notna(val) and val != 0 else 0.01
-                        else:
-                            corrs[col] = 0.01
-                    total = sum(corrs.values())
-                    st.session_state["auto_weights"] = {k: v/total for k, v in corrs.items()}
-                    st.success(f"✅ 解析完了")
-            
-            if "auto_weights" in st.session_state:
-                aw = st.session_state["auto_weights"]
-                fig = px.pie(names=list(aw.keys()), values=list(aw.values()), hole=0.4)
-                st.plotly_chart(fig, use_container_width=True)
-        else:
-            st.info("サイドバーからデータを読み込んでください")
+                # スコア計算
+                score = (f1 * (w_ex/100) + f2 * (w_st/100) + f3 * (w_tu/100) + f4 * (w_all/100))
+                live_data.append({"艇番": i, "score": score, "展示": get_symbol(f1)})
 
-    # --- 右側：当日予想入力エリア ---
-    with col_r:
-        st.subheader("📝 直前気配入力")
-        with st.form("input_form"):
-            results = []
-            # 1-2, 3-4, 5-6の順で表示されるよう2列構成を3回繰り返す
-            for row_idx in range(3):
-                row_cols = st.columns(2)
-                for col_idx in range(2):
-                    boat_num = row_idx * 2 + col_idx + 1
-                    with row_cols[col_idx]:
-                        # 艇番ラベル
-                        st.markdown(f'<div class="boat-box" style="background:{boat_bg[boat_num]}; color:{boat_tx[boat_num]};">{boat_num}号艇</div>', unsafe_allow_html=True)
-                        
-                        # アコーディオン（初期値は閉じた状態）
-                        with st.expander(f"詳細入力", expanded=False):
-                            m = st.select_slider(f"モーター_{boat_num}", range(7), 3, get_symbol, key=f"m_{boat_num}")
-                            t = st.select_slider(f"当地勝率_{boat_num}", range(7), 3, get_symbol, key=f"t_{boat_num}")
-                            w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
-                            s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
-                            
-                            score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
-                            results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
+        submit = st.form_submit_button("🔥 解析を実行", use_container_width=True, type="primary")
 
-            submitted = st.form_submit_button("🔥 解析確定", use_container_width=True, type="primary")
+    if submit and total_w == 100:
+        df_res = pd.DataFrame(live_data).sort_values("score", ascending=False)
+        df_res["期待値"] = (df_res["score"] / df_res["score"].sum() * 100).round(1) if df_res["score"].sum() > 0 else 0
+        
+        st.markdown("---")
+        res_col1, res_col2 = st.columns([1.5, 1])
+        
+        with res_col1:
+            st.subheader("🏁 解析結果")
+            st.dataframe(df_res[["艇番", "期待値", "展示"]], use_container_width=True, hide_index=True)
 
-        if submitted:
-            df = pd.DataFrame(results)
-            if df["score"].sum() > 0:
-                df["予想％"] = (df["score"] / df["score"].sum() * 100).round(1)
-                st.session_state["analytica_result"] = df
-                st.success("解析完了！")
-                
-                disp = df.copy()
-                for c in ["モーター", "当地勝率", "枠番勝率", "枠番スタート"]:
-                    disp[c] = disp[c].apply(get_symbol)
-                disp["艇番"] = disp["艇番"].apply(lambda x: f"{int(x)}号艇")
-                st.dataframe(disp[["艇番", "予想％", "モーター", "当地勝率", "枠番勝率", "枠番スタート"]], use_container_width=True, hide_index=True)
+        with res_col2:
+            st.subheader("💡 買い目")
+            top_3 = df_res["艇番"].tolist()[:3]
+            st.markdown(f"""
+            <div style="background-color: #fff; padding: 20px; border-radius: 10px; border-left: 5px solid #ff4b4b; box-shadow: 2px 2px 10px rgba(0,0,0,0.1);">
+                <h4 style="margin-top:0;">推奨組み合わせ</h4>
+                <p style="font-size: 28px; font-weight: bold; color: #ff4b4b; text-align:center;">{top_3[0]} — {top_3[1]} — {top_3[2]}</p>
+            </div>
+            """, unsafe_allow_html=True)
 
-with tab_sns:
-    st.subheader("🖼️ 画像生成")
-    if "analytica_result" in st.session_state:
-        st.info("SNS用の画像を準備します。")
-    else:
-        st.warning("先に「当日予想」を確定させてください。")
+with tab2:
+    st.subheader("📋 レースメモ")
+    st.text_area("気になった点やメモをここに記入してください", height=300, placeholder="例：展示タイム以上に1号艇の行き足が良い...")
+    st.button("メモを保存（ブラウザを閉じると消えます）")
