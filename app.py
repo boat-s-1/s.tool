@@ -117,75 +117,92 @@ with tab_analytica:
             st.success("解析が完了しました！「予想紙画像生成」タブへ進んでください。")
 
 # ==========================================
-# 5. SNS画像生成タブ (完全日本語版)
+# 5. SNS画像生成タブ (完全日本語版・レイアウト修正)
 # ==========================================
 with tab_sns:
     st.subheader("🖼️ 予想紙（新聞）風デザイン")
+    st.caption("右端の切れや買い目の重なりを修正しました。")
     
     if "analytica_result" in st.session_state:
         df = st.session_state["analytica_result"]
         
         def create_newspaper_image(place, race_num, result_df):
-            w, h = 1000, 1000
-            paper_color = (245, 242, 230) # 渋い新聞紙色
+            # 1. キャンバス設定 (横幅を1200に拡張して切れを防止)
+            w, h = 1200, 1100 
+            paper_color = (245, 242, 230) # 新聞紙色
             img = Image.new('RGB', (w, h), paper_color)
             draw = ImageDraw.Draw(img)
             
             font_p = get_japanese_font()
             if not font_p: return None
 
-            f_title = ImageFont.truetype(font_p, 75)
+            f_title = ImageFont.truetype(font_p, 80)
             f_mark = ImageFont.truetype(font_p, 100)
-            f_text = ImageFont.truetype(font_p, 38)
-            f_label = ImageFont.truetype(font_p, 32)
+            f_text = ImageFont.truetype(font_p, 40)
+            f_label = ImageFont.truetype(font_p, 35)
             f_boat = ImageFont.truetype(font_p, 60)
+            f_footer = ImageFont.truetype(font_p, 45) # 買い目用を少し大きく
 
             # デザインの描画
-            draw.rectangle([20, 20, 980, 980], outline=(50, 50, 50), width=5)
-            draw.line([20, 150, 980, 150], fill=(50, 50, 50), width=3)
+            draw.rectangle([30, 30, w-30, h-30], outline=(50, 50, 50), width=5)
+            draw.line([30, 160, w-30, 160], fill=(50, 50, 50), width=3)
             
-            draw.text((50, 50), f"競艇専門紙 PRO ANALYTICA", fill=(0, 0, 0), font=f_text)
-            draw.text((720, 50), f"{datetime.date.today().strftime('%Y/%m/%d')}", fill=(0, 0, 0), font=f_text)
-            draw.text((50, 175), f"{place}ボート 最終結論 第{race_num}R", fill=(180, 0, 0), font=f_title)
+            draw.text((60, 55), f"競艇専門紙 PRO ANALYTICA", fill=(0, 0, 0), font=f_text)
+            draw.text((w-300, 55), f"{datetime.date.today().strftime('%Y/%m/%d')}", fill=(0, 0, 0), font=f_text)
+            draw.text((60, 185), f"{place}ボート 最終結論 第{race_num}R", fill=(180, 0, 0), font=f_title)
             
-            col_w, start_x, header_y = 145, 75, 280
+            # --- レイアウト定数の見直し ---
+            col_w = 170 # 艇ごとの幅を広げる
+            start_x = 100 # 開始位置を少し右に
+            header_y = 300 # 全体を下にずらす
+            
+            # 項目ラベル
             draw.text((start_x, header_y + 110), "本紙", fill=(100, 100, 100), font=f_label)
-            draw.text((start_x, header_y + 150), "予想", fill=(100, 100, 100), font=f_label)
-            draw.text((start_x, header_y + 350), "艇番", fill=(100, 100, 100), font=f_label)
-            draw.text((start_x, header_y + 580), "指数", fill=(100, 100, 100), font=f_label)
+            draw.text((start_x, header_y + 155), "予想", fill=(100, 100, 100), font=f_label)
+            draw.text((start_x, header_y + 360), "艇番", fill=(100, 100, 100), font=f_label)
+            draw.text((start_x, header_y + 600), "指数", fill=(100, 100, 100), font=f_label)
 
             # 艇ごとの情報を描画
             for i in range(1, 7):
-                curr_x = start_x + (i * col_w) - 15
+                curr_x = start_x + (i * col_w) - 20
                 row = result_df[result_df["boat_num"] == i].iloc[0]
-                draw.line([curr_x - 15, header_y, curr_x - 15, header_y + 650], fill=(150, 150, 150), width=1)
+                # 縦の罫線
+                draw.line([curr_x - 15, header_y, curr_x - 15, header_y + 680], fill=(150, 150, 150), width=1)
                 
                 # 印の自動決定
-                # スコア順位
                 rank = result_df["expected_pct"].rank(ascending=False, method='min')
                 r_val = rank[i-1]
                 mark = "◎" if r_val == 1 else "○" if r_val == 2 else "▲" if r_val == 3 else "△" if r_val == 4 else "・"
                 
-                draw.text((curr_x + 15, header_y + 90), mark, fill=(200, 0, 0), font=f_mark)
+                # ◎の位置調整
+                mark_y_adj = 80 if r_val == 1 else 90
+                draw.text((curr_x + 15, header_y + mark_y_adj), mark, fill=(200, 0, 0), font=f_mark)
                 
+                # 艇番ボックス
                 b_rgb = tuple(int(boat_bg[i].lstrip('#')[j:j+2], 16) for j in (0, 2, 4))
-                draw.ellipse([curr_x + 10, header_y + 320, curr_x + 120, header_y + 430], fill=b_rgb, outline=(0,0,0), width=2)
-                draw.text((curr_x + 48, header_y + 338), str(i), fill=boat_tx[i], font=f_boat)
-                draw.text((curr_x + 5, header_y + 580), f"{row.expected_pct}%", fill=(0, 0, 0), font=f_text)
+                draw.ellipse([curr_x + 10, header_y + 330, curr_x + 130, header_y + 450], fill=b_rgb, outline=(0,0,0), width=2)
+                draw.text((curr_x + 50, header_y + 348), str(i), fill=boat_tx[i], font=f_boat)
+                
+                # 指数（期待％）
+                draw.text((curr_x + 5, header_y + 600), f"{row.expected_pct}%", fill=(0, 0, 0), font=f_text)
 
-            draw.rectangle([50, 850, 950, 950], outline=(0,0,0), width=2)
+            # --- フッター (推奨買い目) の位置修正 ---
+            draw.rectangle([60, 950, w-60, 1060], outline=(0,0,0), width=2) # 枠を下へ
             top_3 = result_df.sort_values("expected_pct", ascending=False)["boat_num"].tolist()[:3]
-            draw.text((80, 880), f"推奨買い目: {top_3[0]} = {top_3[1]} - 全、 {top_3[0]} - {top_3[2]} - 流し", fill=(0, 0, 0), font=f_text)
+            
+            # 推奨買い目のテキスト生成
+            recommend_text = f"推奨買い目: {top_3[0]} = {top_3[1]} - 全、 {top_3[0]} - {top_3[2]} - 流し (3連単)"
+            draw.text((90, 985), recommend_text, fill=(0, 0, 0), font=f_footer) # y位置を下へ
             
             return img
 
         if st.button("✨ 予想紙画像を生成する", use_container_width=True):
-            with st.spinner("画像をデザイン中..."):
+            with st.spinner("画像を再デザイン中..."):
                 img = create_newspaper_image(r_place, r_num, df)
                 if img:
                     st.image(img, use_container_width=True)
                     buf = io.BytesIO()
                     img.save(buf, format="PNG")
-                    st.download_button("📲 画像を保存する", buf.getvalue(), f"Keitei_Yoso_{r_place}.png", "image/png", use_container_width=True)
+                    st.download_button("📲 修正版画像を保存する", buf.getvalue(), f"Keitei_Yoso_{r_place}_fixed.png", "image/png", use_container_width=True)
     else:
         st.warning("「解析・予想入力」タブで解析を確定させてください")
