@@ -121,13 +121,8 @@ with st.sidebar:
             gc = gspread.authorize(creds)
             sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
             ws = sh.worksheet(f"{r_place}_{race_type_val}統計")
-            df_raw = pd.DataFrame(ws.get_all_records())
-            
-            # 【修正】列名のゆらぎを吸収（1列目を boat_num として強制指定）
-            if not df_raw.empty:
-                df_raw.columns = ["boat_num"] + list(df_raw.columns[1:])
-                st.session_state["base_df"] = df_raw
-                st.success("連携完了")
+            st.session_state["base_df"] = pd.DataFrame(ws.get_all_records())
+            st.success("連携完了")
         except Exception as e:
             st.error(f"連携失敗: {e}")
 
@@ -138,26 +133,34 @@ with tab_analytica:
     col_l, col_r = st.columns([1, 1.5])
     
     with col_l:
-        if "base_df" in st.session_state and not st.session_state["base_df"].empty:
+        if "base_df" in st.session_state:
             st.subheader("🤖 統計データ可視化")
+            # どの艇のグラフを出すか選択
             target_boat = st.selectbox("📊 グラフ表示する艇を選択", range(1, 7))
             
-            # 【修正】安全なデータ抽出
-            b_df = st.session_state["base_df"]
-            boat_data = b_df[b_df["boat_num"].astype(int) == target_boat]
+            # 選択された艇のデータを抽出
+            boat_data = st.session_state["base_df"][st.session_state["base_df"]["boat_num"] == target_boat]
             
             if not boat_data.empty:
-                row = boat_data.iloc[0]
-                # 列名が日本語でも対応できるように、インデックス番号または名前で取得
-                # 2列目:モーター, 3列目:当地, 4列目:枠番, 5列目:ST と想定
-                vals = [row.iloc[1], row.iloc[2], row.iloc[3], row.iloc[4]]
-                names = ["モーター", "当地", "枠番", "ST"]
+                # グラフ用の値を準備
+                v_m = boat_data.iloc[0].get("モーター", 0)
+                v_t = boat_data.iloc[0].get("当地勝率", 0)
+                v_w = boat_data.iloc[0].get("枠番勝率", 0)
+                v_s = boat_data.iloc[0].get("平均ST", 0)
                 
-                fig = px.pie(names=names, values=vals, hole=0.4, title=f"{target_boat}号艇の統計能力")
+                fig = px.pie(
+                    names=["モーター", "当地勝率", "枠番勝率", "平均ST"],
+                    values=[v_m, v_t, v_w, v_s],
+                    hole=0.4,
+                    title=f"{target_boat}号艇の統計能力値",
+                    color_discrete_sequence=px.colors.qualitative.Bold
+                )
                 st.plotly_chart(fig, use_container_width=True)
+                
+                
             
             st.divider()
-            st.dataframe(b_df, hide_index=True)
+            st.dataframe(st.session_state["base_df"], hide_index=True)
         else:
             st.info("サイドバーから【統計データ取得】を押してください。")
 
@@ -167,26 +170,23 @@ with tab_analytica:
             user_evals = []
             for i in range(1, 7):
                 with st.expander(f"🚤 {i}号艇 の気配", expanded=(i==1)):
-                    m_eval = st.select_slider(f"モーター_{i}", range(7), 3, get_yoso_mark, key=f"eval_m_{i}")
-                    t_eval = st.select_slider(f"当地_{i}", range(7), 3, get_yoso_mark, key=f"eval_t_{i}")
-                    w_eval = st.select_slider(f"枠番_{i}", range(7), 3, get_yoso_mark, key=f"eval_w_{i}")
-                    s_eval = st.select_slider(f"ST_{i}", range(7), 3, get_yoso_mark, key=f"eval_s_{i}")
-                    user_evals.append({"boat_num": i, "u_m": m_eval, "u_t": t_eval, "u_w": w_eval, "u_s": s_eval})
-            submitted = st.form_submit_button("🔥 解析実行", use_container_width=True, type="primary")
+                    m = st.select_slider(f"モーター気配_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
+                    t = st.select_slider(f"当地気配_{i}", range(7), 3, get_yoso_mark, key=f"t_{i}")
+                    w = st.select_slider(f"枠番気配_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
+                    s = st.select_slider(f"直前ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
+                    user_evals.append({"boat_num": i, "u_m": m, "u_t": t, "u_w": w, "u_s": s})
+            submitted = st.form_submit_button("🔥 統計×気配 で解析実行", use_container_width=True, type="primary")
 
         if submitted:
             u_df = pd.DataFrame(user_evals)
             if "base_df" in st.session_state:
-                b_df = st.session_state["base_df"].copy()
-                b_df["boat_num"] = b_df["boat_num"].astype(int)
+                b_df = st.session_state["base_df"]
                 m_df = pd.merge(u_df, b_df, on="boat_num", how="left").fillna(3)
-                
-                # 計算（列名がわからなくても位置で計算）
                 m_df["score"] = (
-                    ((m_df["u_m"] + m_df.iloc[:, 5]) * (w_m/100)) + # 統計モーター
-                    ((m_df["u_t"] + m_df.iloc[:, 6]) * (w_t/100)) + # 統計当地
-                    ((m_df["u_w"] + m_df.iloc[:, 7]) * (w_w/100)) + # 統計枠番
-                    ((m_df["u_s"] + m_df.iloc[:, 8]) * (w_s/100))   # 統計ST
+                    ((m_df["u_m"] + m_df.get("モーター", 3)) * (w_m/100)) +
+                    ((m_df["u_t"] + m_df.get("当地勝率", 3)) * (w_t/100)) +
+                    ((m_df["u_w"] + m_df.get("枠番勝率", 3)) * (w_w/100)) +
+                    ((m_df["u_s"] + m_df.get("平均ST", 3)) * (w_s/100))
                 )
                 final_df = m_df[["boat_num", "score"]]
             else:
@@ -206,4 +206,4 @@ with tab_sns:
                 st.image(img, use_container_width=True)
                 buf = io.BytesIO()
                 img.save(buf, format="PNG")
-                st.download_button("📲 保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
+                st.download_button("📲 画像を保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
