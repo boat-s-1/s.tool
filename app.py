@@ -119,7 +119,7 @@ with tab_analytica:
 # ==========================================
 # 5. SNS画像生成タブ (完全日本語版・レイアウト修正)
 # ==========================================
-with tab2:
+with tab_sns:
     if "analytica_result" in st.session_state:
         if st.button("✨ 専門紙画像を生成", use_container_width=True):
             img = create_perfect_newspaper(r_place, r_num, st.session_state["analytica_result"])
@@ -129,5 +129,6 @@ with tab2:
                 img.save(buf, format="PNG")
                 st.download_button("📲 保存", buf.getvalue(), "yoso.png", "image/png")
     else: st.warning("予想入力タブで確定させてください")
+
 
 
