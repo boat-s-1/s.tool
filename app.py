@@ -17,10 +17,12 @@ st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="�
 st.markdown("""
     <style>
     .stMetric { background-color: #ffffff; padding: 15px; border-radius: 10px; border: 1px solid #eee; }
-    .boat-box { padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 10px; border: 1px solid #dee2e6; }
+    .boat-box { padding: 10px; border-radius: 8px; text-align: center; font-weight: bold; margin-bottom: 5px; border: 1px solid #dee2e6; }
     .stTabs [data-baseweb="tab-list"] { gap: 24px; }
     .stTabs [data-baseweb="tab"] { height: 50px; white-space: pre-wrap; background-color: #f0f2f6; border-radius: 5px 5px 0 0; padding: 10px 20px; }
     .stTabs [aria-selected="true"] { background-color: #ff4b4b; color: white; }
+    /* アコーディオン内のマージン調整 */
+    .stExpander { border: none !important; box-shadow: none !important; margin-bottom: 10px !important; }
     </style>
 """, unsafe_allow_html=True)
 
@@ -123,14 +125,18 @@ with tab_analytica:
                 for col_idx in range(2):
                     boat_num = row_idx * 2 + col_idx + 1
                     with row_cols[col_idx]:
+                        # 艇番ラベル
                         st.markdown(f'<div class="boat-box" style="background:{boat_bg[boat_num]}; color:{boat_tx[boat_num]};">{boat_num}号艇</div>', unsafe_allow_html=True)
-                        m = st.select_slider(f"モーター_{boat_num}", range(7), 3, get_symbol, key=f"m_{boat_num}")
-                        t = st.select_slider(f"当地勝率_{boat_num}", range(7), 3, get_symbol, key=f"t_{boat_num}")
-                        w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
-                        s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
                         
-                        score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
-                        results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
+                        # アコーディオン（初期値は閉じた状態）
+                        with st.expander(f"詳細入力", expanded=False):
+                            m = st.select_slider(f"モーター_{boat_num}", range(7), 3, get_symbol, key=f"m_{boat_num}")
+                            t = st.select_slider(f"当地勝率_{boat_num}", range(7), 3, get_symbol, key=f"t_{boat_num}")
+                            w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
+                            s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
+                            
+                            score = (m*0.25 + t*0.2 + w*0.3 + s*0.25)
+                            results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
 
             submitted = st.form_submit_button("🔥 解析確定", use_container_width=True, type="primary")
 
