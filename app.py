@@ -29,7 +29,7 @@ def get_japanese_font():
     return font_path
 
 # ==========================================
-# 2. 画像生成エンジン（究極レイアウト版）
+# 2. 画像生成エンジン
 # ==========================================
 def create_perfect_newspaper(place, race_num, result_df):
     w, h = 1300, 1100 
@@ -105,54 +105,4 @@ with st.sidebar:
     st.title("📝 専門紙設定")
     r_place = st.selectbox("📍 開催地", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
     r_num = st.number_input("🏁 レース番号", 1, 12, 1)
-    race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal=True)
-    st.divider()
-    st.markdown("### ⚖️ 解析重み付け")
-    w_m, w_t, w_w, w_s = st.slider("モーター",0,100,30,10), st.slider("当地",0,100,20,10), st.slider("枠番",0,100,30,10), st.slider("ST",0,100,20,10)
-    
-    if st.button("🔄 統計データ取得", use_container_width=True, type="primary"):
-        try:
-            creds = Credentials.from_service_account_info(st.secrets["gcp_service_account"], scopes=["https://www.googleapis.com/auth/spreadsheets", "https://www.googleapis.com/auth/drive"])
-            gc = gspread.authorize(creds)
-            sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
-            ws = sh.worksheet(f"{r_place}_{race_type_val}統計")
-            st.session_state["base_df"] = pd.DataFrame(ws.get_all_records())
-            st.success("スプレッドシート連携完了")
-        except Exception as e:
-            st.error(f"連携失敗: {e}")
-
-st.title(f"📰 競艇専門紙 Analytica - {r_place}")
-tab_analytica, tab_sns = st.tabs(["🔍 解析・予想入力", "📰 予想紙画像生成"])
-
-with tab_analytica:
-    if "base_df" not in st.session_state:
-        st.warning("⚠️ サイドバーからスプレッドシートのデータを取得してください。")
-    
-    col_l, col_r = st.columns([1, 1.5])
-    with col_l:
-        if "base_df" in st.session_state:
-            st.subheader("🤖 スプレッドシート統計")
-            st.dataframe(st.session_state["base_df"], hide_index=True)
-            st.plotly_chart(px.pie(names=["モーター", "当地", "枠番", "ST"], values=[w_m, w_t, w_w, w_s], hole=0.4), use_container_width=True)
-
-    with col_r:
-        st.subheader("📝 本日の直感評価")
-        with st.form("input_form"):
-            user_evals = []
-            for i in range(1, 7):
-                with st.expander(f"🚤 {i}号艇 の気配入力", expanded=(i==1)):
-                    m = st.select_slider(f"モーター_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
-                    t = st.select_slider(f"当地_{i}", range(7), 3, get_yoso_mark, key=f"t_{i}")
-                    w = st.select_slider(f"枠番_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
-                    s = st.select_slider(f"ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
-                    user_evals.append({"boat_num": i, "u_m": m, "u_t": t, "u_w": w, "u_s": s})
-            submitted = st.form_submit_button("🔥 統計×直感 で解析実行", use_container_width=True, type="primary")
-
-        if submitted:
-            # ユーザー評価をデータフレーム化
-            u_df = pd.DataFrame(user_evals)
-            
-            # スプレッドシートデータがある場合はマージして計算
-            if "base_df" in st.session_state:
-                b_df = st.session_state["base_df"]
-                # 艇番(boat_num)
+    race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal
