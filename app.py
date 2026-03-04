@@ -47,16 +47,34 @@ boat_bg = {1: "#ffffff", 2: "#333333", 3: "#e03131", 4: "#1971c2", 5: "#fcc419",
 boat_tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}
 
 # ==========================================
-# 3. サイドバー
+# 3. サイドバー (構成変更済み)
 # ==========================================
 with st.sidebar:
     st.title("🎯 設定パネル")
-    r_place = st.selectbox("📍 開催地", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
-    r_num = st.number_input("🏁 レース番号", 1, 12, 1)
+    
+    # 1. 開催地
+    r_place = st.selectbox("📍 開催地を選択", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
+    
+    # 2. 解析対象
     race_type_val = st.radio("📊 解析対象", ["混合", "女子"], horizontal=True)
     
-    st.divider()
-    # 手動配点設定
+    # 3. 統計データ取得
+    st.markdown("### 📊 統計データ連携")
+    target_sheet = f"{r_place}_{race_type_val}統計"
+    if st.button("🔄 スプレッドシートを取得", use_container_width=True, type="primary"):
+        with st.spinner("通信中..."):
+            try:
+                sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
+                ws = sh.worksheet(target_sheet)
+                data = ws.get_all_records()
+                st.session_state["base_df"] = pd.DataFrame(data)
+                st.success(f"✅ {len(data)}件 取得完了")
+            except Exception as e:
+                st.error(f"「{target_sheet}」が見つかりませんでした。")
+
+    st.divider() # --------------- 区切り線
+
+    # 4. 配点設定
     st.markdown("### ⚙️ 配点設定")
     st.caption("計算の重みを調整（合計100%）")
     w_m = st.slider("モーターの重み", 0, 100, 25)
@@ -67,27 +85,13 @@ with st.sidebar:
     total_w = w_m + w_t + w_w + w_s
     if total_w != 100:
         st.error(f"合計が {total_w}% です。100%に調整してください。")
-    
-    st.divider()
-    # 【復活】スプレッドシート取得ボタン
-    st.markdown("### 📊 統計データ連携")
-    target_sheet = f"{r_place}_{race_type_val}統計"
-    if st.button("🔄 スプレッドシートを取得", use_container_width=True, type="primary"):
-        with st.spinner("通信中..."):
-            try:
-                # 指定のシートIDを開く
-                sh = gc.open_by_key("1lN794iGtyGV2jNwlYzUA8wEbhRwhPM7FxDAkMaoJss4")
-                ws = sh.worksheet(target_sheet)
-                data = ws.get_all_records()
-                st.session_state["base_df"] = pd.DataFrame(data)
-                st.success(f"✅ {len(data)}件 取得完了")
-            except Exception as e:
-                st.error(f"「{target_sheet}」が見つからないか、エラーが発生しました。")
 
 # ==========================================
 # 4. メイン画面
 # ==========================================
-st.title(f"📊 {r_place} {r_num}R Pro Analytica")
+# レース番号は不要とのことでしたが、メイン画面のタイトル等で識別が必要な場合を考慮し
+# ここでは一旦「Pro Analytica」のみにしていますが、必要なら再配置可能です。
+st.title(f"📊 {r_place} Pro Analytica")
 
 tab_analytica, tab_sns = st.tabs(["🔍 統計解析 & 当日予想", "🖼️ SNS画像生成"])
 
@@ -148,7 +152,6 @@ with tab_analytica:
                             w = st.select_slider(f"枠番勝率_{boat_num}", range(7), 3, get_symbol, key=f"w_{boat_num}")
                             s = st.select_slider(f"枠スタート_{boat_num}", range(7), 3, get_symbol, key=f"s_{boat_num}")
                             
-                            # サイドバーのスライダー重みを計算に適用
                             score = (m * (w_m/100) + t * (w_t/100) + w * (w_w/100) + s * (w_s/100))
                             results.append({"艇番": boat_num, "score": score, "モーター": m, "当地勝率": t, "枠番勝率": w, "枠番スタート": s})
 
