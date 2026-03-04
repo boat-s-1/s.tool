@@ -15,7 +15,6 @@ import plotly.express as px
 # ==========================================
 st.set_page_config(page_title="競艇専門紙 Pro Analytica", layout="wide", page_icon="📝")
 
-# 日本語フォントを自動ダウンロードする関数
 @st.cache_resource
 def get_japanese_font():
     font_url = "https://github.com/googlefonts/noto-cjk/raw/main/Sans/OTF/Japanese/NotoSansCJKjp-Bold.otf"
@@ -30,7 +29,7 @@ def get_japanese_font():
     return font_path
 
 # ==========================================
-# 2. 画像生成エンジン（ズレ修正版）
+# 2. 画像生成エンジン
 # ==========================================
 def create_perfect_newspaper(place, race_num, result_df):
     w, h = 1300, 1100 
@@ -140,25 +139,32 @@ with tab_analytica:
         st.subheader("📝 本日の気配評価")
         with st.form("input_form"):
             results = []
-            grid = st.columns(2)
+            # 艇ごとにアコーディオンを作成
             for i in range(1, 7):
-                with grid[(i-1)%2]:
-                    bg = {1: "#ffffff", 2: "#333333", 3: "#ff3b3b", 4: "#007bff", 5: "#ffc107", 6: "#28a745"}[i]
-                    tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}[i]
-                    st.markdown(f'<div style="background:{bg}; color:{tx}; padding:5px; border-radius:5px; text-align:center; font-weight:bold;">{i}号艇</div>', unsafe_allow_html=True)
-                    m = st.select_slider(f"モーター_{i}", range(7), 3, get_yoso_mark)
-                    t = st.select_slider(f"当地_{i}", range(7), 3, get_yoso_mark)
-                    w = st.select_slider(f"枠番_{i}", range(7), 3, get_yoso_mark)
-                    s = st.select_slider(f"ST_{i}", range(7), 3, get_yoso_mark)
+                bg = {1: "#ffffff", 2: "#333333", 3: "#ff3b3b", 4: "#007bff", 5: "#ffc107", 6: "#28a745"}[i]
+                tx = {1: "#000000", 2: "#ffffff", 3: "#ffffff", 4: "#ffffff", 5: "#000000", 6: "#ffffff"}[i]
+                
+                # ここで st.expander (アコーディオン) を使用
+                with st.expander(f"🚤 {i}号艇 の気配を入力", expanded=(i==1)):
+                    st.markdown(f'<div style="background:{bg}; color:{tx}; padding:8px; border-radius:5px; text-align:center; font-weight:bold; margin-bottom:10px;">{i}号艇</div>', unsafe_allow_html=True)
+                    m = st.select_slider(f"モーター気配_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
+                    t = st.select_slider(f"当地気配_{i}", range(7), 3, get_yoso_mark, key=f"t_{i}")
+                    w = st.select_slider(f"枠番気配_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
+                    s = st.select_slider(f"直前ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
+                    
                     score = (m * w_m/100 + t * w_t/100 + w * w_w/100 + s * w_s/100)
                     results.append({"boat_num": i, "score": score, "m": m, "t": t, "w": w, "s": s})
-            submitted = st.form_submit_button("🔥 予想を確定", use_container_width=True, type="primary")
+            
+            st.divider()
+            submitted = st.form_submit_button("🔥 予想を確定して解析を実行", use_container_width=True, type="primary")
 
         if submitted:
             df = pd.DataFrame(results)
-            df["expected_pct"] = (df["score"] / df["score"].sum() * 100).round(1) if df["score"].sum() > 0 else 0
+            # 全体のスコアが0の場合の対策
+            total_score = df["score"].sum()
+            df["expected_pct"] = (df["score"] / total_score * 100).round(1) if total_score > 0 else 0
             st.session_state["analytica_result"] = df
-            st.success("解析完了！「予想紙画像生成」タブへ。")
+            st.success("解析完了！「予想紙画像生成」タブを開いてください。")
 
 with tab_sns:
     if "analytica_result" in st.session_state:
@@ -168,6 +174,6 @@ with tab_sns:
                 st.image(img, use_container_width=True)
                 buf = io.BytesIO()
                 img.save(buf, format="PNG")
-                st.download_button("📲 保存", buf.getvalue(), f"yoso_{r_place}.png", "image/png", use_container_width=True)
+                st.download_button("📲 画像を保存", buf.getvalue(), f"yoso_{r_place}_R{r_num}.png", "image/png", use_container_width=True)
     else:
-        st.warning("予想入力タブで確定させてください")
+        st.warning("「解析・予想入力」タブで【🔥 予想を確定】ボタンを押してください。")
