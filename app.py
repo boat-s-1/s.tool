@@ -74,8 +74,6 @@ with tab1:
             for col_idx in range(2):
                 i = row_idx * 2 + col_idx + 1
                 with cols[col_idx]:
-                    # アコーディオン（Expander）を適用
-                    # expanded=Trueにすると最初から開いた状態になります。ここでは1号艇のみ開いています。
                     with st.expander(f"{i}号艇の詳細入力", expanded=(i==1)):
                         st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:5px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
                         m = st.select_slider(f"モーター", range(7), 0, get_symbol, key=f"pre_m_{i}")
@@ -100,6 +98,16 @@ with tab1:
 
 with tab2:
     st.subheader(f"🏟️ {r_place} 直前気配解析")
+    
+    # グラフ表示用のコンテナを先に作成
+    st.markdown(f"##### {r_place}の会場別補正ウェイト")
+    c = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
+    fig = px.bar(x=list(c.keys()), y=list(c.values()), color=list(c.keys()), 
+                 labels={'x':'項目', 'y':'重要度'}, color_discrete_sequence=px.colors.qualitative.Pastel)
+    fig.update_layout(showlegend=False, height=250, margin=dict(l=20, r=20, t=20, b=20))
+    st.plotly_chart(fig, use_container_width=True)
+    
+
     with st.form("live_form"):
         live_raw = []
         for row_idx in range(3):
@@ -107,8 +115,7 @@ with tab2:
             for col_idx in range(2):
                 i = row_idx * 2 + col_idx + 1
                 with l_cols[col_idx]:
-                    # 直前解析もアコーディオン化
-                    with st.expander(f"{i}号艇の気配", expanded=(i==1)):
+                    with st.expander(f"{i}号艇の気配入力", expanded=(i==1)):
                         st.markdown(f'<div style="background:{boat_bg[i]}; color:{boat_tx[i]}; padding:5px; border-radius:4px; text-align:center; font-weight:bold; border:1px solid #ccc;">{i}号艇</div>', unsafe_allow_html=True)
                         f1 = st.select_slider(f"展示", range(7), 0, get_symbol, key=f"live_f1_{i}")
                         f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
@@ -117,14 +124,15 @@ with tab2:
                         corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
                         live_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
                         live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
-        submitted_live = st.form_submit_button(f"{r_place}で解析実行", use_container_width=True, type="primary")
+        
+        submitted_live = st.form_submit_button(f"{r_place}の特性を反映して最終解析", use_container_width=True, type="primary")
 
     if submitted_live:
         df_live = pd.DataFrame(live_raw).sort_values("score", ascending=False)
         total_s = df_live["score"].sum()
         df_live["期待値"] = (df_live["score"] / total_s * 100).round(1) if total_s > 0 else 0
         st.session_state["final_res"] = df_live
-        st.markdown("### 🏁 解析結果")
+        st.markdown("### 🏁 最終解析結果")
         st.dataframe(df_live[["艇番", "期待値", "展示", "直線", "回り足", "一周"]], use_container_width=True, hide_index=True)
 
 with tab3:
