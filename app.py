@@ -66,7 +66,10 @@ def create_perfect_newspaper(place, race_num, result_df):
 
     for i in range(1, 7):
         curr_x_center = first_col_x + (i-1) * col_w + (col_w // 2)
-        row = temp_df[temp_df["boat_num"] == i].iloc[0]
+        target_rows = temp_df[temp_df["boat_num"] == i]
+        if target_rows.empty: continue
+        row = target_rows.iloc[0]
+        
         line_x = first_col_x + (i-1) * col_w
         draw.line([line_x, row_y_base, line_x, row_y_base + 630], fill=(0,0,0), width=2)
         rank = row["rank"]
@@ -94,7 +97,6 @@ def get_yoso_mark(val):
 # ==========================================
 # 3. メインアプリ
 # ==========================================
-# サイドバー
 with st.sidebar:
     st.title("📝 設定")
     r_place = st.selectbox("📍 開催地", ["桐生", "戸田", "江戸川", "平和島", "多摩川", "浜名湖", "蒲郡", "常滑", "津", "三国", "びわこ", "住之江", "尼崎", "鳴門", "丸亀", "児島", "宮島", "徳山", "下関", "若松", "芦屋", "福岡", "佐賀", "大村"])
@@ -114,13 +116,46 @@ with st.sidebar:
         except Exception as e:
             st.error(f"エラー: {e}")
 
-# メインコンテンツ
 st.title(f"📰 Analytica - {r_place}")
 
-tab1, tab2 = st.tabs(["🔍 解析・予想", "📰 予想紙画像"])
+# --- タブ構成の変更 ---
+tab_guide, tab_analytica, tab_sns = st.tabs(["💡 使い方ガイド", "🔍 解析・予想", "📰 予想紙画像"])
 
-with tab1:
-    # --- 上段：評価入力エリア ---
+# --- 使い方ガイドタブ ---
+with tab_guide:
+    st.markdown("### 🚀 3ステップで最強の予想紙を作成")
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.info("**① データ取得**\n左のメニューから開催地を選び「統計データ取得」をクリック。過去の膨大なデータが読み込まれます。")
+    with col2:
+        st.info("**② 直感を入力**\n展示航走や直前の気配を見て、あなたの「目」で感じた評価をスライダーで入力します。")
+    
+    st.success("**③ 画像生成してシェア！**\n解析結果に基づいた本格的な「専門紙画像」が完成。SNSでの共有や保存が可能です。")
+
+    st.markdown("---")
+    st.subheader("💡 的中率アップの秘訣")
+    
+    with st.expander("✅ 評価の付け方のコツ"):
+        st.write("""
+        - **展示（モーター）**: 伸び足が良い艇には迷わず高い評価を。
+        - **当地**: 苦手意識のある選手がいないか、統計データと照らし合わせましょう。
+        - **ST（スタート）**: 今節のタイミングが合っているか直前情報をチェック。
+        """)
+    
+    with st.expander("📊 指数（%）の見方"):
+        st.write("""
+        - **30%超え**: 圧倒的な軸候補です。
+        - **20%前後**: 混戦模様。相手選びが重要になります。
+        - **一桁台**: 穴として一考の価値あり。
+        """)
+        
+    
+    
+    st.caption("※本ツールは統計と主観を融合させるための補助ツールです。舟券の購入は自己責任でお願いします。")
+
+# --- 解析・予想タブ ---
+with tab_analytica:
     st.subheader("📝 本日の評価入力")
     with st.form("input_form"):
         user_evals = []
@@ -131,7 +166,6 @@ with tab1:
                 w = st.select_slider(f"枠番_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
                 s = st.select_slider(f"ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
                 user_evals.append({"boat_num": i, "u_m": m, "u_t": t, "u_w": w, "u_s": s})
-        
         submitted = st.form_submit_button("🔥 解析を実行して結果を表示", use_container_width=True, type="primary")
 
     if submitted:
@@ -141,7 +175,6 @@ with tab1:
             b_df["boat_num"] = b_df["boat_num"].astype(int)
             m_df = pd.merge(u_df, b_df, on="boat_num", how="left").fillna(3)
             
-            # スコア計算
             m_df["disp_val"] = (m_df["u_m"] + m_df.iloc[:, 5])
             m_df["local_val"] = (m_df["u_t"] + m_df.iloc[:, 6])
             m_df["frame_val"] = (m_df["u_w"] + m_df.iloc[:, 7])
@@ -155,20 +188,18 @@ with tab1:
         else:
             st.warning("先にサイドバーから統計データを取得してください。")
 
-    # --- 下段：解析結果エリア ---
     st.divider()
     if "analytica_result" in st.session_state:
         st.subheader("📊 解析結果一覧")
         res_df = st.session_state["analytica_result"][["boat_num", "disp_val", "local_val", "frame_val", "st_val", "score", "rank"]]
         res_df.columns = ["艇番", "展示", "当地", "枠番", "ST", "スコア", "順位"]
-        
-        # スマホで見やすいように表示を調整
         st.dataframe(res_df.sort_values("順位"), hide_index=True, use_container_width=True)
-        st.success("解析が完了しました！下のタブから画像を生成できます。")
+        st.success("解析完了！「予想紙画像」タブから保存できます。")
     else:
         st.info("上のフォームを入力して解析を実行してください。")
 
-with tab2:
+# --- 画像生成タブ ---
+with tab_sns:
     if "analytica_result" in st.session_state:
         if st.button("✨ 専門紙画像を生成", use_container_width=True):
             img = create_perfect_newspaper(r_place, r_num, st.session_state["analytica_result"])
