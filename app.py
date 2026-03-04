@@ -61,6 +61,7 @@ def create_perfect_newspaper(place, race_num, result_df):
     draw.line([30, row_y_base, w-30, row_y_base], fill=(0,0,0), width=3)
 
     temp_df = result_df.copy()
+    # expected_pctに基づいてランク付け
     temp_df["rank"] = temp_df["expected_pct"].rank(ascending=False, method='min')
 
     boat_bg = {1: "#ffffff", 2: "#333333", 3: "#ff3b3b", 4: "#007bff", 5: "#ffc107", 6: "#28a745"}
@@ -68,7 +69,10 @@ def create_perfect_newspaper(place, race_num, result_df):
 
     for i in range(1, 7):
         curr_x_center = first_col_x + (i-1) * col_w + (col_w // 2)
-        row = temp_df[temp_df["boat_num"] == i].iloc[0]
+        target_rows = temp_df[temp_df["boat_num"] == i]
+        if target_rows.empty: continue
+        row = target_rows.iloc[0]
+        
         line_x = first_col_x + (i-1) * col_w
         draw.line([line_x, row_y_base, line_x, row_y_base + 630], fill=(0,0,0), width=2)
         
@@ -82,7 +86,7 @@ def create_perfect_newspaper(place, race_num, result_df):
         n_w = f_boat.getlength(str(i))
         draw.text((curr_x_center - n_w//2, row_y_base + 278), str(i), fill=boat_tx[i], font=f_boat)
         
-        idx_str = f"{row.expected_pct}%"
+        idx_str = f"{row['expected_pct']}%"
         idx_w = f_index.getlength(idx_str)
         draw.text((curr_x_center - idx_w//2, row_y_base + 515), idx_str, fill=(0, 0, 0), font=f_index)
 
@@ -115,7 +119,6 @@ with st.sidebar:
             ws = sh.worksheet(f"{r_place}_{race_type_val}統計")
             df_raw = pd.DataFrame(ws.get_all_records())
             
-            # 列名を boat_num に統一する処理
             if not df_raw.empty:
                 df_raw.columns = ["boat_num"] + list(df_raw.columns[1:])
                 st.session_state["base_df"] = df_raw
@@ -127,23 +130,32 @@ st.title(f"📰 競艇専門紙 Analytica - {r_place}")
 tab_analytica, tab_sns = st.tabs(["🔍 解析・予想入力", "📰 予想紙画像生成"])
 
 with tab_analytica:
-    col_l, col_r = st.columns([1, 1.5])
+    col_l, col_r = st.columns([1.2, 1.3])
     
     with col_l:
-        st.subheader("🤖 統計データ確認")
-        if "base_df" in st.session_state:
-            # 統計テーブルの表示
-            st.dataframe(st.session_state["base_df"], hide_index=True, use_container_width=True)
+        st.subheader("🤖 解析結果一覧")
+        if "analytica_result" in st.session_state:
+            # 指定された列を表示用に整理
+            display_df = st.session_state["analytica_result"][["boat_num", "disp_val", "local_val", "frame_val", "st_val", "score", "rank"]]
+            display_df.columns = ["艇番", "展示", "当地", "枠番", "ST", "スコア", "順位"]
+            
+            # 順位でソート
+            display_df = display_df.sort_values("順位")
+            
+            # テーブルを表示
+            st.dataframe(display_df, hide_index=True, use_container_width=True)
+            
+            
         else:
-            st.info("サイドバーの「🔄 統計データ取得」ボタンを押すと、ここにスプレッドシートのデータが表示されます。")
+            st.info("右側で予想を入力し、解析を実行してください。")
 
     with col_r:
-        st.subheader("📝 本日の気配評価")
+        st.subheader("📝 本日の気配評価入力")
         with st.form("input_form"):
             user_evals = []
             for i in range(1, 7):
                 with st.expander(f"🚤 {i}号艇 の気配を入力", expanded=(i==1)):
-                    m = st.select_slider(f"モーター気配_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
+                    m = st.select_slider(f"モーター/展示_{i}", range(7), 3, get_yoso_mark, key=f"m_{i}")
                     t = st.select_slider(f"当地気配_{i}", range(7), 3, get_yoso_mark, key=f"t_{i}")
                     w = st.select_slider(f"枠番気配_{i}", range(7), 3, get_yoso_mark, key=f"w_{i}")
                     s = st.select_slider(f"直前ST_{i}", range(7), 3, get_yoso_mark, key=f"s_{i}")
@@ -154,32 +166,32 @@ with tab_analytica:
         if submitted:
             u_df = pd.DataFrame(user_evals)
             
-            # 統計データがある場合はマージ、ない場合は直感のみ
             if "base_df" in st.session_state:
                 b_df = st.session_state["base_df"].copy()
                 b_df["boat_num"] = b_df["boat_num"].astype(int)
                 m_df = pd.merge(u_df, b_df, on="boat_num", how="left").fillna(3)
                 
-                # スライダーをなくしたため、均等配分（各25%）または統計値との単純合算で計算
-                # ここでは 統計値 + 直感値 の合計をスコア化しています
-                m_df["score"] = (
-                    (m_df["u_m"] + m_df.iloc[:, 5]) + 
-                    (m_df["u_t"] + m_df.iloc[:, 6]) + 
-                    (m_df["u_w"] + m_df.iloc[:, 7]) + 
-                    (m_df["u_s"] + m_df.iloc[:, 8])
-                )
-                final_df = m_df[["boat_num", "score"]]
+                # スコア詳細の計算（表示用）
+                m_df["disp_val"] = (m_df["u_m"] + m_df.iloc[:, 5])
+                m_df["local_val"] = (m_df["u_t"] + m_df.iloc[:, 6])
+                m_df["frame_val"] = (m_df["u_w"] + m_df.iloc[:, 7])
+                m_df["st_val"] = (m_df["u_s"] + m_df.iloc[:, 8])
+                
+                # 合計スコア
+                m_df["score"] = m_df["disp_val"] + m_df["local_val"] + m_df["frame_val"] + m_df["st_val"]
+                
+                # 順位計算
+                m_df["rank"] = m_df["score"].rank(ascending=False, method='min').astype(int)
+                
+                # 画像生成用のパーセント（指数）
+                total_score = m_df["score"].sum()
+                m_df["expected_pct"] = (m_df["score"] / total_score * 100).round(1) if total_score > 0 else 0
+                
+                st.session_state["analytica_result"] = m_df
+                st.success("解析成功！左側の表を更新しました。")
+                st.rerun() # 表を即時反映させるため
             else:
-                u_df["score"] = u_df["u_m"] + u_df["u_t"] + u_df["u_w"] + u_df["u_s"]
-                final_df = u_df[["boat_num", "score"]]
-
-            # スコアからパーセント算出
-            total_score = final_df["score"].sum()
-            final_df["expected_pct"] = (final_df["score"] / total_score * 100).round(1) if total_score > 0 else 0
-            
-            st.session_state["analytica_result"] = final_df
-            st.success("解析が完了しました！")
-            st.table(final_df)
+                st.error("先にサイドバーから統計データを取得してください。")
 
 with tab_sns:
     if "analytica_result" in st.session_state:
