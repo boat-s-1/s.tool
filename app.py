@@ -12,14 +12,15 @@ import streamlit.components.v1 as components
 # ==========================================
 st.set_page_config(page_title="競艇Pro Analytica", layout="wide", page_icon="🎯")
 
+# 会場別特性補正値（サンプル数データを追加）
 PLACE_CORRECTIONS = {
-    "桐生": {"展示": 0.2, "直線": 0.2, "回り足": 0.3, "一周": 0.3},
-    "戸田": {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2},
-    "江戸川": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2},
-    "福岡": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2},
-    "住之江": {"展示": 0.4, "直線": 0.1, "回り足": 0.3, "一周": 0.2},
-    "大村": {"展示": 0.5, "直線": 0.1, "回り足": 0.2, "一周": 0.2},
-    "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25}
+    "桐生": {"展示": 0.2, "直線": 0.2, "回り足": 0.3, "一周": 0.3, "サンプル数": 1450},
+    "戸田": {"展示": 0.1, "直線": 0.5, "回り足": 0.2, "一周": 0.2, "サンプル数": 1280},
+    "江戸川": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2, "サンプル数": 980},
+    "福岡": {"展示": 0.1, "直線": 0.2, "回り足": 0.5, "一周": 0.2, "サンプル数": 1100},
+    "住之江": {"展示": 0.4, "直線": 0.1, "回り足": 0.3, "一周": 0.2, "サンプル数": 1560},
+    "大村": {"展示": 0.5, "直線": 0.1, "回り足": 0.2, "一周": 0.2, "サンプル数": 1800},
+    "DEFAULT": {"展示": 0.25, "直線": 0.25, "回り足": 0.25, "一周": 0.25, "サンプル数": 5000}
 }
 
 get_symbol = lambda val: {6: "◎", 5: "○", 4: "▲", 3: "△", 2: "×", 1: "・", 0: "無"}.get(val, "無")
@@ -99,14 +100,20 @@ with tab1:
 with tab2:
     st.subheader(f"🏟️ {r_place} 直前気配解析")
     
-    # グラフ表示用のコンテナを先に作成
+    # 会場データの取得
+    c_data = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
+    # グラフ描画用の辞書（サンプル数を除外して作成）
+    plot_data = {k: v for k, v in c_data.items() if k != "サンプル数"}
+    
     st.markdown(f"##### {r_place}の会場別補正ウェイト")
-    c = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-    fig = px.bar(x=list(c.keys()), y=list(c.values()), color=list(c.keys()), 
+    fig = px.bar(x=list(plot_data.keys()), y=list(plot_data.values()), color=list(plot_data.keys()), 
                  labels={'x':'項目', 'y':'重要度'}, color_discrete_sequence=px.colors.qualitative.Pastel)
     fig.update_layout(showlegend=False, height=250, margin=dict(l=20, r=20, t=20, b=20))
     st.plotly_chart(fig, use_container_width=True)
     
+    # 📊 ここで参照データ数を表示
+    sample_count = c_data.get("サンプル数", 0)
+    st.caption(f"💡 参照データ：直近 {sample_count:,} レースの統計に基づき算出")
 
     with st.form("live_form"):
         live_raw = []
@@ -121,8 +128,9 @@ with tab2:
                         f2 = st.select_slider(f"直線", range(7), 0, get_symbol, key=f"live_f2_{i}")
                         f3 = st.select_slider(f"回り足", range(7), 0, get_symbol, key=f"live_f3_{i}")
                         f4 = st.select_slider(f"一周", range(7), 0, get_symbol, key=f"live_f4_{i}")
-                        corr = PLACE_CORRECTIONS.get(r_place, PLACE_CORRECTIONS["DEFAULT"])
-                        live_score = (f1 * corr["展示"] + f2 * corr["直線"] + f3 * corr["回り足"] + f4 * corr["一周"])
+                        
+                        # 補正値計算（サンプル数を除いたキーで計算）
+                        live_score = (f1 * c_data["展示"] + f2 * c_data["直線"] + f3 * c_data["回り足"] + f4 * c_data["一周"])
                         live_raw.append({"艇番": i, "score": live_score, "展示": get_symbol(f1), "直線": get_symbol(f2), "回り足": get_symbol(f3), "一周": get_symbol(f4)})
         
         submitted_live = st.form_submit_button(f"{r_place}の特性を反映して最終解析", use_container_width=True, type="primary")
